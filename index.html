@@ -249,29 +249,29 @@
   .overlay-top{
     position:relative; z-index:2;
     display:flex; align-items:center; justify-content:space-between;
-    padding: clamp(16px,3vh,48px) clamp(20px,4vw,72px) 0;
+    padding: clamp(12px,2vh,32px) clamp(16px,3vw,56px) 0;
     flex-shrink:0;
   }
-  .top-left{ display:flex; align-items:center; gap:clamp(10px,1.8vw,28px); flex-wrap:wrap; }
+  .top-left{ display:flex; align-items:center; gap:clamp(8px,1.4vw,22px); flex-wrap:wrap; }
 
   .home-logo{
     display:flex; align-items:baseline; gap:2px;
-    font-size:clamp(18px, 2.4vw, 38px);
+    font-size:clamp(16px,1.8vw,28px);
     white-space:nowrap;
   }
   .home-logo .boom{ color:var(--white); }
   .home-logo .sports{ color:var(--red); }
 
   .now-watching{
-    display:flex; align-items:center; gap:clamp(6px,0.8vw,14px);
-    padding:clamp(5px,0.7vh,10px) clamp(10px,1.2vw,20px) clamp(5px,0.7vh,10px) clamp(7px,0.9vw,14px);
+    display:flex; align-items:center; gap:clamp(5px,0.6vw,10px);
+    padding:clamp(4px,0.5vh,8px) clamp(8px,1vw,16px) clamp(4px,0.5vh,8px) clamp(6px,0.7vw,12px);
     background:rgba(255,255,255,0.07);
     border:1px solid var(--line);
     border-radius:30px;
-    max-width:35vw;
+    max-width:30vw;
   }
   .live-dot{
-    width:clamp(7px,0.7vw,12px); height:clamp(7px,0.7vw,12px); border-radius:50%;
+    width:clamp(6px,0.55vw,9px); height:clamp(6px,0.55vw,9px); border-radius:50%;
     background:var(--red);
     box-shadow:0 0 10px var(--red-glow);
     animation:pulse 1.4s ease-in-out infinite;
@@ -282,11 +282,11 @@
     50%{ opacity:.5; transform:scale(0.8); }
   }
   .now-watching .nw-label{
-    font-size:clamp(8px,0.75vw,13px); font-weight:800; letter-spacing:1.5px; color:var(--muted);
+    font-size:clamp(7px,0.6vw,11px); font-weight:800; letter-spacing:1.5px; color:var(--muted);
     white-space:nowrap;
   }
   .now-watching .nw-name{
-    font-size:clamp(11px,1.2vw,20px); font-weight:700; color:var(--white);
+    font-size:clamp(10px,1vw,16px); font-weight:700; color:var(--white);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
 
@@ -294,9 +294,9 @@
     background:rgba(255,255,255,0.07);
     border:2px solid var(--line);
     color:var(--muted);
-    border-radius:clamp(6px,0.7vw,12px);
-    padding:clamp(8px,1vh,16px) clamp(14px,1.6vw,28px);
-    font-size:clamp(10px,1vw,16px); font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
+    border-radius:clamp(5px,0.6vw,10px);
+    padding:clamp(7px,0.8vh,12px) clamp(12px,1.3vw,22px);
+    font-size:clamp(9px,0.85vw,13px); font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
     cursor:pointer; outline:none; white-space:nowrap;
     transition:box-shadow .15s, color .15s, border-color .15s;
     flex-shrink:0;
@@ -310,34 +310,32 @@
   /* ---- bottom channel dock ---- */
   .overlay-bottom{
     position:relative; z-index:2;
-    padding: 0 clamp(16px,4vw,72px) clamp(16px,3.5vh,52px);
+    padding: 0 clamp(16px,3vw,56px) clamp(12px,2.5vh,36px);
     flex-shrink:0;
   }
   .dock-heading{
-    display:flex; align-items:baseline; gap:clamp(8px,1vw,16px);
-    margin-bottom:clamp(8px,1.2vh,18px);
+    display:flex; align-items:baseline; gap:10px;
+    margin-bottom:clamp(6px,1vh,12px);
   }
-  .dock-heading .display{ font-size:clamp(16px,2.2vw,34px); color:var(--white); }
-  .dock-heading span{ font-size:clamp(10px,0.9vw,15px); color:var(--muted); letter-spacing:1px; }
+  .dock-heading .display{ font-size:clamp(14px,1.6vw,26px); color:var(--white); }
+  .dock-heading span{ font-size:clamp(9px,0.8vw,13px); color:var(--muted); letter-spacing:1px; }
 
   .dock{
     display:grid;
-    /* auto-fit columns: each tile is at least 12vw wide, at most 1fr;
-       on a 65" 4K TV this yields ~6–7 columns; on a small 32" maybe 4 */
-    grid-template-columns:repeat(auto-fill, minmax(clamp(120px, 12vw, 210px), 1fr));
-    gap:clamp(8px,1.2vw,20px);
-    max-height:32vh;
+    grid-template-columns:repeat(auto-fill, minmax(clamp(100px, 9vw, 160px), 1fr));
+    gap:clamp(6px,0.8vw,14px);
+    max-height:26vh;
     overflow-y:auto;
-    padding:clamp(2px,0.3vh,6px) clamp(2px,0.3vw,6px) clamp(4px,0.6vh,10px);
+    padding:2px 2px 6px;
   }
 
   .tile{
     position:relative;
     background:var(--card);
     border:2px solid transparent;
-    border-radius:clamp(8px,1vw,16px);
-    padding:clamp(10px,1.4vh,22px) clamp(8px,1vw,18px);
-    display:flex; flex-direction:column; align-items:center; gap:clamp(6px,0.8vh,12px);
+    border-radius:clamp(6px,0.7vw,12px);
+    padding:clamp(8px,1vh,14px) clamp(6px,0.7vw,12px);
+    display:flex; flex-direction:column; align-items:center; gap:clamp(4px,0.6vh,8px);
     cursor:pointer;
     outline:none;
     transition:transform .15s, box-shadow .15s, background .15s, border-color .15s;
@@ -346,35 +344,35 @@
   .tile:focus{
     border-color:var(--red);
     box-shadow:var(--focus-ring);
-    transform:translateY(-3px) scale(1.04);
+    transform:translateY(-2px) scale(1.04);
     background:var(--card-hover);
     z-index:3;
   }
   .tile.playing{ border-color:var(--red); }
   .tile.playing::after{
     content:'';
-    position:absolute; top:clamp(4px,0.6vh,10px); right:clamp(4px,0.6vw,10px);
-    width:clamp(6px,0.6vw,10px); height:clamp(6px,0.6vw,10px); border-radius:50%;
+    position:absolute; top:6px; right:6px;
+    width:7px; height:7px; border-radius:50%;
     background:var(--red);
     box-shadow:0 0 8px var(--red-glow);
   }
   .tile-logo{
-    width:clamp(38px,5vw,80px); height:clamp(38px,5vw,80px); border-radius:50%;
+    width:clamp(28px,3.2vw,52px); height:clamp(28px,3.2vw,52px); border-radius:50%;
     background:#0E0E11;
     display:flex; align-items:center; justify-content:center;
     overflow:hidden; flex-shrink:0;
     border:1px solid var(--line);
   }
   .tile-logo img{ width:100%; height:100%; object-fit:contain; }
-  .tile-logo .fallback{ font-size:clamp(16px,2vw,32px); }
+  .tile-logo .fallback{ font-size:clamp(12px,1.5vw,22px); }
   .tile-name{
-    font-size:clamp(10px,1.1vw,17px); font-weight:700; text-align:center;
+    font-size:clamp(9px,0.9vw,14px); font-weight:700; text-align:center;
     color:var(--white);
     line-height:1.25;
   }
   .tile-views{
-    font-size:clamp(8px,0.75vw,12px); color:var(--muted-dim); font-weight:600;
-    display:flex; align-items:center; gap:4px;
+    font-size:clamp(7px,0.6vw,10px); color:var(--muted-dim); font-weight:600;
+    display:flex; align-items:center; gap:3px;
   }
 
   .loading-screen{
