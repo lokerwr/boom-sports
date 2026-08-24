@@ -209,15 +209,31 @@
     display:none;
     align-items:center; justify-content:center;
     pointer-events:none;
-    z-index:5;
+    z-index:6;
+    background:rgba(0,0,0,0.35);
   }
   .buffer-spinner.show{ display:flex; }
-  .buffer-spinner div{
-    width:clamp(40px, 5vw, 80px); height:clamp(40px, 5vw, 80px);
-    border:clamp(3px, 0.4vw, 6px) solid rgba(255,255,255,0.18);
+  .buffer-spinner-inner{
+    display:flex; flex-direction:column; align-items:center; gap:16px;
+  }
+  .buffer-spinner-ring{
+    width:72px; height:72px;
+    border:5px solid rgba(255,255,255,0.15);
     border-top-color:var(--red);
+    border-right-color:rgba(240,20,44,0.5);
     border-radius:50%;
-    animation:spin .8s linear infinite;
+    animation:spin .75s linear infinite;
+    box-shadow: 0 0 28px rgba(240,20,44,0.4);
+  }
+  .buffer-spinner-label{
+    font-size:13px; font-weight:700; letter-spacing:2px;
+    color:rgba(255,255,255,0.75);
+    text-transform:uppercase;
+    animation:fadepulse 1.4s ease-in-out infinite;
+  }
+  @keyframes fadepulse{
+    0%,100%{ opacity:1; }
+    50%{ opacity:0.4; }
   }
 
   /* ---- overlay — sits above the video, fills the screen ---- */
@@ -480,7 +496,12 @@
       <div class="display">SELECT A CHANNEL TO START WATCHING</div>
       <span>USE YOUR REMOTE TO CHOOSE FROM THE LIST BELOW</span>
     </div>
-    <div class="buffer-spinner" id="buffer-spinner"><div></div></div>
+    <div class="buffer-spinner" id="buffer-spinner">
+      <div class="buffer-spinner-inner">
+        <div class="buffer-spinner-ring"></div>
+        <div class="buffer-spinner-label">Loading…</div>
+      </div>
+    </div>
   </div>
 
   <div id="overlay">
@@ -949,6 +970,7 @@ function playStream(url) {
 function _startStream(url) {
   const video = el('player');
   showBuffering(true);
+  startBufferWatcher();
 
   // Tear down any previous HLS instance cleanly
   if (hls) { try { hls.destroy(); } catch(e){} hls = null; }
@@ -1080,6 +1102,7 @@ function stopPlayback(){
   clearTimeout(retryTimer);
   retryCount = 0;
   currentUrl = null;
+  stopBufferWatcher();
   if (hls) { try { hls.destroy(); } catch(e){} hls = null; }
   const video = el('player');
   try { video.pause(); } catch(e){}
@@ -1093,8 +1116,30 @@ function stopPlayback(){
   clearTimeout(hideTimer);
 }
 
+let _bufferWatcher = null;
+
 function showBuffering(show){
   el('buffer-spinner').classList.toggle('show', show);
+}
+
+/* Watches the video's readyState every 300 ms and shows the spinner
+   whenever the video has a src but isn't ready to play yet.
+   This catches loading states that don't always fire clean events
+   on older TV browsers. */
+function startBufferWatcher(){
+  stopBufferWatcher();
+  const video = el('player');
+  _bufferWatcher = setInterval(() => {
+    if (!video.src && !currentUrl) { showBuffering(false); return; }
+    // readyState < 3 (HAVE_FUTURE_DATA) means not enough data to play
+    const loading = video.readyState < 3 && !video.paused && !video.ended;
+    showBuffering(loading);
+  }, 300);
+}
+
+function stopBufferWatcher(){
+  if (_bufferWatcher) { clearInterval(_bufferWatcher); _bufferWatcher = null; }
+  showBuffering(false);
 }
 
 async function bestEffortIncrementClick(key){
