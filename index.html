@@ -205,12 +205,11 @@
   .empty-state span{ font-size:clamp(11px, 1.4vw, 20px); letter-spacing:1px; }
 
   .buffer-spinner{
-    position:absolute; inset:0;
+    position:fixed; inset:0;
     display:none;
     align-items:center; justify-content:center;
     pointer-events:none;
-    z-index:6;
-    background:rgba(0,0,0,0.35);
+    z-index:50;
   }
   .buffer-spinner.show{ display:flex; }
   .buffer-spinner-inner{
@@ -496,11 +495,13 @@
       <div class="display">SELECT A CHANNEL TO START WATCHING</div>
       <span>USE YOUR REMOTE TO CHOOSE FROM THE LIST BELOW</span>
     </div>
-    <div class="buffer-spinner" id="buffer-spinner">
-      <div class="buffer-spinner-inner">
-        <div class="buffer-spinner-ring"></div>
-        <div class="buffer-spinner-label">Loading…</div>
-      </div>
+  </div>
+
+  <!-- Spinner is a direct child of screen-home so it always centers on the full screen -->
+  <div class="buffer-spinner" id="buffer-spinner">
+    <div class="buffer-spinner-inner">
+      <div class="buffer-spinner-ring"></div>
+      <div class="buffer-spinner-label">Loading…</div>
     </div>
   </div>
 
@@ -545,8 +546,9 @@ const SUPABASE_URL = "https://wxprtwuutysqdtgxnppq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4cHJ0d3V1dHlzcWR0Z3hucHBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NjA5MTgsImV4cCI6MjEwMTIzNjkxOH0.Qm2s3jVhcsJEauQJ7wdA5Q3x3vqjBlK2xRfw58P9kQ4";
 const SPORTS_TABLE = "sports_hub";
 const SPORTS_ROW_ID = "main";
-const OVERLAY_HIDE_DELAY = 5000; // ms of inactivity before overlay auto-dismisses
-const BOOT_TIMEOUT_MS = 9000; // if boot hasn't finished by this point, show an on-screen error instead of spinning forever
+const OVERLAY_HIDE_DELAY = 5000;
+const BOOT_TIMEOUT_MS = 9000;
+const DEFAULT_STREAM_URL = "https://corestream.siteyaptim.live/s-sport/index.m3u8";
 
 const el = (id) => document.getElementById(id);
 
@@ -831,8 +833,30 @@ async function initHome(){
     renderDock();
     el('signout-btn').focus();
     attachRemoteHandlers();
+    autoPlayDefault();
   } catch(e) {
     showToast('Could not load channels. Check your connection.');
+  }
+}
+
+function autoPlayDefault(){
+  // Try to find the default URL in the channel list so the tile highlights
+  const defaultIdx = currentChannels.findIndex(ch =>
+    ch.videoUrl.trim() === DEFAULT_STREAM_URL.trim()
+  );
+
+  if (defaultIdx !== -1) {
+    // Found in list — select it properly so the tile lights up
+    const tiles = el('dock').children;
+    if (tiles[defaultIdx]) selectChannel(defaultIdx, tiles[defaultIdx]);
+  } else {
+    // Not in list — play it directly without highlighting a tile
+    el('empty-state').style.display = 'none';
+    el('now-watching').style.display = 'flex';
+    el('nw-name').textContent = 'Default Channel';
+    playStream(DEFAULT_STREAM_URL);
+    hasStartedPlayback = true;
+    resetHideTimer();
   }
 }
 
