@@ -310,22 +310,20 @@
   /* ---- bottom channel dock ---- */
   .overlay-bottom{
     position:relative; z-index:2;
-    padding: 0 clamp(12px,2vw,36px) clamp(8px,1.5vh,20px);
+    padding: 0 20px 14px;
     flex-shrink:0;
   }
   .dock-heading{
     display:flex; align-items:baseline; gap:8px;
     margin-bottom:6px;
   }
-  .dock-heading .display{ font-size:clamp(11px,1.1vw,18px); color:var(--white); }
-  .dock-heading span{ font-size:clamp(9px,0.7vw,11px); color:var(--muted); letter-spacing:1px; }
+  .dock-heading .display{ font-size:14px; color:var(--white); }
+  .dock-heading span{ font-size:10px; color:var(--muted); letter-spacing:1px; }
 
   .dock{
     display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(clamp(80px, 7vw, 120px), 1fr));
-    gap:clamp(4px,0.5vw,8px);
-    max-height:22vh;
-    overflow-y:auto;
+    grid-template-columns:repeat(8, 1fr);
+    gap:8px;
     padding:2px 2px 4px;
   }
 
@@ -333,9 +331,9 @@
     position:relative;
     background:var(--card);
     border:2px solid transparent;
-    border-radius:clamp(6px,0.6vw,10px);
-    padding:clamp(6px,0.8vh,10px) clamp(4px,0.5vw,8px);
-    display:flex; flex-direction:column; align-items:center; gap:clamp(3px,0.4vh,6px);
+    border-radius:8px;
+    padding:8px 6px;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
     cursor:pointer;
     outline:none;
     transition:transform .15s, box-shadow .15s, background .15s, border-color .15s;
@@ -357,21 +355,21 @@
     box-shadow:0 0 6px var(--red-glow);
   }
   .tile-logo{
-    width:clamp(22px,2.2vw,36px); height:clamp(22px,2.2vw,36px); border-radius:50%;
+    width:32px; height:32px; border-radius:50%;
     background:#0E0E11;
     display:flex; align-items:center; justify-content:center;
     overflow:hidden; flex-shrink:0;
     border:1px solid var(--line);
   }
   .tile-logo img{ width:100%; height:100%; object-fit:contain; }
-  .tile-logo .fallback{ font-size:clamp(10px,1.1vw,16px); }
+  .tile-logo .fallback{ font-size:14px; }
   .tile-name{
-    font-size:clamp(8px,0.75vw,11px); font-weight:700; text-align:center;
+    font-size:10px; font-weight:700; text-align:center;
     color:var(--white);
     line-height:1.2;
   }
   .tile-views{
-    font-size:clamp(7px,0.55vw,9px); color:var(--muted-dim); font-weight:600;
+    font-size:8px; color:var(--muted-dim); font-weight:600;
     display:flex; align-items:center; gap:2px;
   }
 
