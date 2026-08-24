@@ -9,7 +9,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="window.__scriptLoadFailed && window.__scriptLoadFailed('supabase-js')"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js" onerror="window.__scriptLoadFailed && window.__scriptLoadFailed('hls.js')"></script>
 
 <style>
@@ -518,17 +517,10 @@ function showLoadingError(title, msg){
   el('loading-error-msg').textContent = msg;
 }
 
-window.__scriptLoadFailed = function(name){
-  showLoadingError(
-    'Couldn\'t load a required file',
-    'The app could not download "' + name + '" from the internet. This is usually a TV network/firewall issue, not the app itself. Check the TV\'s internet connection and date & time settings, then retry.'
-  );
-};
-
-window.addEventListener('error', function(e){
-  showLoadingError('Something went wrong', (e && e.message) ? e.message : 'An unexpected error occurred while starting the app.');
-});
 window.addEventListener('unhandledrejection', function(e){
+  // Only surface errors during boot (before bootFinished) so we don't
+  // show a scary modal for non-critical background failures.
+  if (bootFinished) return;
   showLoadingError('Something went wrong', (e && e.reason && e.reason.message) ? e.reason.message : 'An unexpected error occurred while starting the app.');
 });
 
@@ -557,27 +549,14 @@ let overlayVisible = true;
 let hasStartedPlayback = false;
 let focusGrid = []; // array of rows, each row an array of tile elements
 let activeTileEl = null;
-let sb = null;
+/* ============================================================
+   SUPABASE via plain fetch() — no SDK needed.
+   Works on any browser that supports fetch (virtually universal).
+   ============================================================ */
 
-/* Some Smart TV browsers restrict or sandbox localStorage in ways that
-   cause Supabase's session check to hang instead of failing cleanly.
-   Detect that up front and fall back to an in-memory store so auth
-   always resolves, even if nothing persists across reloads on that TV. */
-function getSafeAuthStorage(){
-  try {
-    const testKey = '__boomsports_storage_test__';
-    window.localStorage.setItem(testKey, '1');
-    window.localStorage.removeItem(testKey);
-    return undefined; // localStorage works fine — let supabase-js use its default
-  } catch (e) {
-    const mem = {};
-    return {
-      getItem: (k) => (k in mem ? mem[k] : null),
-      setItem: (k, v) => { mem[k] = v; },
-      removeItem: (k) => { delete mem[k]; },
-    };
-  }
-}
+// In-memory session store (survives the page session; lost on reload,
+// but that's fine — the user just logs in again, same as cold-start).
+let _session = null;
 
 function withTimeout(promise, ms){
   return Promise.race([
@@ -586,32 +565,88 @@ function withTimeout(promise, ms){
   ]);
 }
 
+/** POST to Supabase Auth REST endpoint */
+async function sbAuthPost(path, body){
+  const res = await fetch(SUPABASE_URL + '/auth/v1' + path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error_description || json.msg || json.error || 'Auth error');
+  return json;
+}
+
+/** GET a single row from a Supabase table via the REST API */
+async function sbSelectSingle(table, column, value){
+  const url = SUPABASE_URL + '/rest/v1/' + table
+    + '?select=*&' + encodeURIComponent(column) + '=eq.' + encodeURIComponent(value)
+    + '&limit=1';
+  const headers = {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + (_session ? _session.access_token : SUPABASE_ANON_KEY),
+    'Accept': 'application/json',
+  };
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error('DB read failed: ' + res.status + ' ' + txt);
+  }
+  const rows = await res.json();
+  return rows && rows.length > 0 ? rows[0] : null;
+}
+
+/** PATCH a row in a Supabase table */
+async function sbUpdate(table, column, value, patchBody){
+  const url = SUPABASE_URL + '/rest/v1/' + table
+    + '?' + encodeURIComponent(column) + '=eq.' + encodeURIComponent(value);
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + (_session ? _session.access_token : SUPABASE_ANON_KEY),
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal',
+    },
+    body: JSON.stringify(patchBody),
+  });
+  if (!res.ok) {
+    // non-critical; swallow
+  }
+}
+
+/** Try to restore a saved session from localStorage (best-effort) */
+function loadStoredSession(){
+  try {
+    const raw = localStorage.getItem('boomsports_session');
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    // Discard if expired (with 60 s buffer)
+    if (!s || !s.access_token || !s.expires_at) return null;
+    if (Date.now() / 1000 > s.expires_at - 60) { localStorage.removeItem('boomsports_session'); return null; }
+    return s;
+  } catch(e){ return null; }
+}
+function saveSession(s){
+  try { localStorage.setItem('boomsports_session', JSON.stringify(s)); } catch(e){}
+}
+function clearSession(){
+  _session = null;
+  try { localStorage.removeItem('boomsports_session'); } catch(e){}
+}
+
 async function boot(){
   try {
-    if (typeof supabase === 'undefined') {
-      throw new Error('The Supabase library did not load. Check the TV\'s internet connection and retry.');
-    }
-
-    const authStorage = getSafeAuthStorage();
-    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, authStorage ? {
-      auth: { storage: authStorage, persistSession: true, autoRefreshToken: true }
-    } : undefined);
-
-    let session = null;
-    try {
-      const result = await withTimeout(sb.auth.getSession(), 5000);
-      session = result && result.data ? result.data.session : null;
-    } catch (innerErr) {
-      // The saved-session check itself hung or failed (seen on some TV
-      // browsers) — that's not fatal, it just means treat this as a
-      // fresh visit and let the person log in normally.
-      session = null;
-    }
+    // Restore a saved session (best-effort; fails silently on restricted TVs)
+    _session = loadStoredSession();
 
     bootFinished = true;
     el('loading').style.display = 'none';
 
-    if (session) {
+    if (_session) {
       showScreen('home');
       initHome();
     } else {
@@ -656,23 +691,38 @@ el('login-form').addEventListener('submit', async (e) => {
   el('submit-btn').disabled = true;
 
   try {
-    let result;
+    let json;
     if (mode === 'signin') {
-      result = await withTimeout(sb.auth.signInWithPassword({ email, password }), 15000);
-    } else {
-      result = await withTimeout(sb.auth.signUp({ email, password }), 15000);
-    }
-    if (result.error) throw result.error;
-
-    if (mode === 'signup' && !result.data.session) {
-      msg.classList.add('ok');
-      msg.textContent = 'Account created. Check your email to confirm, then sign in.';
-      mode = 'signin';
-      el('submit-btn').textContent = 'Sign In';
-      el('toggle-mode-btn').textContent = 'Need an account? Create one';
-    } else {
+      json = await withTimeout(
+        sbAuthPost('/token?grant_type=password', { email, password }),
+        15000
+      );
+      // Supabase returns { access_token, refresh_token, expires_in, expires_at, user, ... }
+      _session = json;
+      if (json.expires_in && !json.expires_at) {
+        json.expires_at = Math.floor(Date.now() / 1000) + json.expires_in;
+      }
+      saveSession(json);
       showScreen('home');
       initHome();
+    } else {
+      json = await withTimeout(
+        sbAuthPost('/signup', { email, password }),
+        15000
+      );
+      if (json.access_token) {
+        // Auto-confirmed (e.g. email confirmations disabled in project settings)
+        _session = json;
+        saveSession(json);
+        showScreen('home');
+        initHome();
+      } else {
+        msg.classList.add('ok');
+        msg.textContent = 'Account created. Check your email to confirm, then sign in.';
+        mode = 'signin';
+        el('submit-btn').textContent = 'Sign In';
+        el('toggle-mode-btn').textContent = 'Need an account? Create one';
+      }
     }
   } catch (err) {
     msg.textContent = err.message || 'Something went wrong. Try again.';
@@ -699,7 +749,19 @@ document.addEventListener('keydown', (e) => {
 
 /* ===================== HOME / DISCOVERY ===================== */
 el('signout-btn').addEventListener('click', async () => {
-  await sb.auth.signOut();
+  // Best-effort server-side sign-out (revokes refresh token); we clear locally regardless.
+  try {
+    if (_session && _session.access_token) {
+      await fetch(SUPABASE_URL + '/auth/v1/logout', {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + _session.access_token,
+        },
+      });
+    }
+  } catch(e){}
+  clearSession();
   stopPlayback();
   el('email').value = '';
   el('password').value = '';
@@ -709,21 +771,19 @@ el('signout-btn').addEventListener('click', async () => {
 
 async function initHome(){
   showToast('Loading channels…');
-  const { data, error } = await sb
-    .from(SPORTS_TABLE)
-    .select('data')
-    .eq('id', SPORTS_ROW_ID)
-    .single();
-
-  if (error || !data) {
+  try {
+    const row = await sbSelectSingle(SPORTS_TABLE, 'id', SPORTS_ROW_ID);
+    if (!row) {
+      showToast('Could not load channels. Check your connection.');
+      return;
+    }
+    currentChannels = parseSportsData(row.data || {});
+    renderDock();
+    el('signout-btn').focus();
+    attachRemoteHandlers();
+  } catch(e) {
     showToast('Could not load channels. Check your connection.');
-    return;
   }
-
-  currentChannels = parseSportsData(data.data || {});
-  renderDock();
-  el('signout-btn').focus();
-  attachRemoteHandlers();
 }
 
 /* Mirrors the Flutter app's _parseSportsData: every top-level string key
@@ -900,12 +960,12 @@ function showBuffering(show){
 
 async function bestEffortIncrementClick(key){
   try {
-    const { data } = await sb.from(SPORTS_TABLE).select('data').eq('id', SPORTS_ROW_ID).single();
-    if (!data) return;
-    const fresh = data.data || {};
+    const row = await sbSelectSingle(SPORTS_TABLE, 'id', SPORTS_ROW_ID);
+    if (!row) return;
+    const fresh = row.data || {};
     fresh[key + '_ClickCount'] = (Number(fresh[key + '_ClickCount']) || 0) + 1;
     fresh[key + '_LastReset'] = new Date().toISOString();
-    await sb.from(SPORTS_TABLE).update({ data: fresh }).eq('id', SPORTS_ROW_ID);
+    await sbUpdate(SPORTS_TABLE, 'id', SPORTS_ROW_ID, { data: fresh });
   } catch (e) {
     // Non-critical analytics write — safe to ignore (e.g. RLS blocks anon writes).
   }
