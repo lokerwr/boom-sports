@@ -559,14 +559,54 @@ let focusGrid = []; // array of rows, each row an array of tile elements
 let activeTileEl = null;
 let sb = null;
 
+/* Some Smart TV browsers restrict or sandbox localStorage in ways that
+   cause Supabase's session check to hang instead of failing cleanly.
+   Detect that up front and fall back to an in-memory store so auth
+   always resolves, even if nothing persists across reloads on that TV. */
+function getSafeAuthStorage(){
+  try {
+    const testKey = '__boomsports_storage_test__';
+    window.localStorage.setItem(testKey, '1');
+    window.localStorage.removeItem(testKey);
+    return undefined; // localStorage works fine — let supabase-js use its default
+  } catch (e) {
+    const mem = {};
+    return {
+      getItem: (k) => (k in mem ? mem[k] : null),
+      setItem: (k, v) => { mem[k] = v; },
+      removeItem: (k) => { delete mem[k]; },
+    };
+  }
+}
+
+function withTimeout(promise, ms){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), ms)),
+  ]);
+}
+
 async function boot(){
   try {
     if (typeof supabase === 'undefined') {
       throw new Error('The Supabase library did not load. Check the TV\'s internet connection and retry.');
     }
-    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const { data: { session } } = await sb.auth.getSession();
+    const authStorage = getSafeAuthStorage();
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, authStorage ? {
+      auth: { storage: authStorage, persistSession: true, autoRefreshToken: true }
+    } : undefined);
+
+    let session = null;
+    try {
+      const result = await withTimeout(sb.auth.getSession(), 5000);
+      session = result && result.data ? result.data.session : null;
+    } catch (innerErr) {
+      // The saved-session check itself hung or failed (seen on some TV
+      // browsers) — that's not fatal, it just means treat this as a
+      // fresh visit and let the person log in normally.
+      session = null;
+    }
 
     bootFinished = true;
     el('loading').style.display = 'none';
@@ -618,9 +658,9 @@ el('login-form').addEventListener('submit', async (e) => {
   try {
     let result;
     if (mode === 'signin') {
-      result = await sb.auth.signInWithPassword({ email, password });
+      result = await withTimeout(sb.auth.signInWithPassword({ email, password }), 15000);
     } else {
-      result = await sb.auth.signUp({ email, password });
+      result = await withTimeout(sb.auth.signUp({ email, password }), 15000);
     }
     if (result.error) throw result.error;
 
