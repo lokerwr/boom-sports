@@ -9,7 +9,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js" onerror="window.__scriptLoadFailed && window.__scriptLoadFailed('hls.js')"></script>
+<!-- HLS.js — used only when the browser cannot play HLS natively -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+<!-- p2p-media-loader is NOT loaded — keeping it simple and compatible for TV browsers -->
 
 <style>
   :root{
@@ -931,46 +933,156 @@ function selectChannel(index, tileEl){
   resetHideTimer();
 }
 
-function playStream(url){
+/* ---------- playback ---------- */
+let retryTimer = null;
+let retryCount = 0;
+let currentUrl = null;
+const MAX_RETRIES = 4;
+const RETRY_DELAY = 3000; // ms between retries
+
+function playStream(url) {
+  currentUrl = url;
+  retryCount = 0;
+  _startStream(url);
+}
+
+function _startStream(url) {
   const video = el('player');
   showBuffering(true);
 
-  if (hls) { hls.destroy(); hls = null; }
-  video.pause();
+  // Tear down any previous HLS instance cleanly
+  if (hls) { try { hls.destroy(); } catch(e){} hls = null; }
+  clearTimeout(retryTimer);
+
+  try { video.pause(); } catch(e){}
   video.removeAttribute('src');
   video.load();
 
-  const isHls = url.includes('.m3u8');
+  const isHls = /\.m3u8/i.test(url) || /m3u8/i.test(url);
 
-  if (isHls && window.Hls && Hls.isSupported()) {
-    hls = new Hls({ maxBufferLength: 30 });
-    hls.loadSource(url);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      video.muted = false;
-      video.play().catch(() => {});
-    });
-    hls.on(Hls.Events.ERROR, (evt, data) => {
-      if (data.fatal) {
-        showToast('Stream unavailable right now.');
-        showBuffering(false);
-      }
-    });
+  if (isHls) {
+    // Strategy 1: native HLS (Safari, most Smart TV browsers — no library needed,
+    // no CORS library overhead, most compatible)
+    if (video.canPlayType('application/vnd.apple.mpegurl') ||
+        video.canPlayType('application/x-mpegURL')) {
+      _playNative(video, url);
+
+    // Strategy 2: HLS.js (Chrome, Firefox on TV sticks etc.)
+    } else if (window.Hls && Hls.isSupported()) {
+      _playHlsJs(video, url);
+
+    // Strategy 3: last resort — just set src and hope the browser handles it
+    } else {
+      _playNative(video, url);
+    }
   } else {
-    video.src = url;
-    video.muted = false;
-    video.play().catch(() => {});
+    // mp4 / direct URLs
+    _playNative(video, url);
+  }
+}
+
+function _playNative(video, url) {
+  video.src = url;
+  video.load();
+  video.muted = false;
+
+  const onCanPlay = () => { showBuffering(false); cleanup(); };
+  const onPlaying = () => { showBuffering(false); retryCount = 0; cleanup(); };
+  const onWaiting = () => showBuffering(true);
+  const onError   = () => { cleanup(); _handleError(); };
+  const onStalled = () => {
+    // stalled for more than 8 s = treat as error
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => { cleanup(); _handleError(); }, 8000);
+  };
+
+  function cleanup() {
+    video.removeEventListener('canplay',  onCanPlay);
+    video.removeEventListener('playing',  onPlaying);
+    video.removeEventListener('waiting',  onWaiting);
+    video.removeEventListener('error',    onError);
+    video.removeEventListener('stalled',  onStalled);
+    clearTimeout(retryTimer);
   }
 
-  video.oncanplay = () => showBuffering(false);
-  video.onwaiting = () => showBuffering(true);
-  video.onplaying = () => showBuffering(false);
+  video.addEventListener('canplay',  onCanPlay);
+  video.addEventListener('playing',  onPlaying);
+  video.addEventListener('waiting',  onWaiting);
+  video.addEventListener('error',    onError);
+  video.addEventListener('stalled',  onStalled);
+
+  video.play().catch(() => {
+    // Autoplay blocked — try muted first, then unmute after play starts
+    video.muted = true;
+    video.play().then(() => { video.muted = false; }).catch(() => _handleError());
+  });
+}
+
+function _playHlsJs(video, url) {
+  hls = new Hls({
+    maxBufferLength: 60,
+    maxMaxBufferLength: 120,
+    maxBufferSize: 60 * 1000 * 1000,
+    lowLatencyMode: false,
+    enableWorker: true,
+    fragLoadingTimeOut: 20000,
+    manifestLoadingTimeOut: 20000,
+    levelLoadingTimeOut: 20000,
+    fragLoadingMaxRetry: 6,
+    manifestLoadingMaxRetry: 4,
+    xhrSetup: function(xhr) {
+      // Some streams need credentials omitted — this helps with CORS
+      xhr.withCredentials = false;
+    },
+  });
+
+  hls.loadSource(url);
+  hls.attachMedia(video);
+
+  hls.on(Hls.Events.MANIFEST_PARSED, () => {
+    video.muted = false;
+    video.play().catch(() => {
+      video.muted = true;
+      video.play().then(() => { video.muted = false; }).catch(() => {});
+    });
+  });
+
+  hls.on(Hls.Events.ERROR, (evt, data) => {
+    if (!data.fatal) return; // non-fatal — HLS.js recovers by itself
+    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+      // Try to recover network errors automatically
+      try { hls.startLoad(); } catch(e) { _handleError(); }
+    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+      try { hls.recoverMediaError(); } catch(e) { _handleError(); }
+    } else {
+      _handleError();
+    }
+  });
+
+  video.addEventListener('playing', () => { showBuffering(false); retryCount = 0; }, { once: true });
+  video.addEventListener('waiting', () => showBuffering(true));
+  video.addEventListener('canplay', () => showBuffering(false));
+}
+
+function _handleError() {
+  if (retryCount < MAX_RETRIES && currentUrl) {
+    retryCount++;
+    showToast('Reconnecting… (' + retryCount + '/' + MAX_RETRIES + ')');
+    showBuffering(true);
+    retryTimer = setTimeout(() => _startStream(currentUrl), RETRY_DELAY);
+  } else {
+    showBuffering(false);
+    showToast('Stream unavailable right now. Select another channel.');
+  }
 }
 
 function stopPlayback(){
-  if (hls) { hls.destroy(); hls = null; }
+  clearTimeout(retryTimer);
+  retryCount = 0;
+  currentUrl = null;
+  if (hls) { try { hls.destroy(); } catch(e){} hls = null; }
   const video = el('player');
-  video.pause();
+  try { video.pause(); } catch(e){}
   video.removeAttribute('src');
   video.load();
   el('empty-state').style.display = 'flex';
