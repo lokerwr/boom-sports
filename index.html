@@ -9,8 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="window.__scriptLoadFailed && window.__scriptLoadFailed('supabase-js')"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js" onerror="window.__scriptLoadFailed && window.__scriptLoadFailed('hls.js')"></script>
 
 <style>
   :root{
@@ -367,6 +367,29 @@
     0%{ transform:translateX(-100%); }
     100%{ transform:translateX(250%); }
   }
+  .loading-error{
+    display:none;
+    max-width:520px;
+    margin-top:8px;
+    padding:18px 22px;
+    background:rgba(240,20,44,0.08);
+    border:1px solid var(--red-dim);
+    border-radius:12px;
+    text-align:center;
+    color:var(--white);
+    font-size:14px;
+    line-height:1.6;
+  }
+  .loading-error.show{ display:block; }
+  .loading-error strong{ color:var(--red); display:block; margin-bottom:6px; font-size:15px; }
+  .loading-error .retry-btn{
+    margin-top:14px;
+    background:var(--red);
+    color:#fff; border:none; border-radius:8px;
+    padding:10px 24px; font-weight:700; font-size:13px;
+    letter-spacing:1px; text-transform:uppercase;
+    cursor:pointer;
+  }
 
   .toast{
     position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
@@ -387,7 +410,13 @@
 
 <div id="loading" class="loading-screen">
   <div class="brand-logo display"><span class="boom">BOOM</span><span class="sports">SPORTS</span></div>
-  <div class="loading-bar"><div></div></div>
+  <div class="loading-bar" id="loading-bar"><div></div></div>
+  <div class="loading-error" id="loading-error">
+    <strong id="loading-error-title">Couldn't start the app</strong>
+    <span id="loading-error-msg"></span>
+    <br/>
+    <button class="retry-btn" id="loading-retry-btn" tabindex="0">Retry</button>
+  </div>
 </div>
 
 <!-- ===================== LOGIN SCREEN ===================== -->
@@ -468,10 +497,51 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const SPORTS_TABLE = "sports_hub";
 const SPORTS_ROW_ID = "main";
 const OVERLAY_HIDE_DELAY = 5000; // ms of inactivity before overlay auto-dismisses
-
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const BOOT_TIMEOUT_MS = 9000; // if boot hasn't finished by this point, show an on-screen error instead of spinning forever
 
 const el = (id) => document.getElementById(id);
+
+/* ============ FAIL-SAFE LOADING (never spin forever) ============
+   Smart TV browsers can silently fail to load a CDN script or reach
+   an API (blocked domain, bad DNS, wrong system clock, restricted
+   network) with no console to see why. Everything below makes sure
+   that instead of an endless spinner, the person always ends up
+   seeing either the app or a plain-language error, right on the TV. */
+let bootFinished = false;
+
+function showLoadingError(title, msg){
+  if (bootFinished) return; // don't show a stale error after we've already recovered
+  el('loading-bar').style.display = 'none';
+  const box = el('loading-error');
+  box.classList.add('show');
+  el('loading-error-title').textContent = title;
+  el('loading-error-msg').textContent = msg;
+}
+
+window.__scriptLoadFailed = function(name){
+  showLoadingError(
+    'Couldn\'t load a required file',
+    'The app could not download "' + name + '" from the internet. This is usually a TV network/firewall issue, not the app itself. Check the TV\'s internet connection and date & time settings, then retry.'
+  );
+};
+
+window.addEventListener('error', function(e){
+  showLoadingError('Something went wrong', (e && e.message) ? e.message : 'An unexpected error occurred while starting the app.');
+});
+window.addEventListener('unhandledrejection', function(e){
+  showLoadingError('Something went wrong', (e && e.reason && e.reason.message) ? e.reason.message : 'An unexpected error occurred while starting the app.');
+});
+
+el('loading-retry-btn').addEventListener('click', function(){ location.reload(); });
+
+setTimeout(function(){
+  if (!bootFinished) {
+    showLoadingError(
+      'Taking too long to start',
+      'The app is still trying to connect after several seconds. Check the TV\'s internet connection and date & time settings (an incorrect clock can block secure connections), then retry.'
+    );
+  }
+}, BOOT_TIMEOUT_MS);
 
 /* ---------- screen management ---------- */
 function showScreen(name){
@@ -487,16 +557,32 @@ let overlayVisible = true;
 let hasStartedPlayback = false;
 let focusGrid = []; // array of rows, each row an array of tile elements
 let activeTileEl = null;
+let sb = null;
 
 async function boot(){
-  const { data: { session } } = await sb.auth.getSession();
-  el('loading').style.display = 'none';
-  if (session) {
-    showScreen('home');
-    initHome();
-  } else {
-    showScreen('login');
-    el('email').focus();
+  try {
+    if (typeof supabase === 'undefined') {
+      throw new Error('The Supabase library did not load. Check the TV\'s internet connection and retry.');
+    }
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const { data: { session } } = await sb.auth.getSession();
+
+    bootFinished = true;
+    el('loading').style.display = 'none';
+
+    if (session) {
+      showScreen('home');
+      initHome();
+    } else {
+      showScreen('login');
+      el('email').focus();
+    }
+  } catch (err) {
+    showLoadingError(
+      'Couldn\'t connect',
+      (err && err.message) ? err.message : 'Could not reach the login service. Check the TV\'s internet connection and retry.'
+    );
   }
 }
 
