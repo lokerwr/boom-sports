@@ -1290,6 +1290,27 @@ function showToast(msg){
   toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
+/* ---------- TV REMOTE KEY DEBUGGER — shows key codes on screen ---------- */
+(function(){
+  const dbg = document.createElement('div');
+  dbg.id = 'key-debug';
+  dbg.style.cssText = [
+    'position:fixed','top:10px','right:10px','z-index:9999',
+    'background:rgba(0,0,0,0.85)','color:#fff','font-size:20px',
+    'font-family:monospace','padding:12px 18px','border-radius:8px',
+    'border:2px solid #e0141c','min-width:220px','text-align:left',
+    'pointer-events:none','line-height:1.6'
+  ].join(';');
+  dbg.innerHTML = 'Press any remote key…';
+  document.body.appendChild(dbg);
+
+  window.addEventListener('keydown', function(e){
+    dbg.innerHTML =
+      'key: <b>' + e.key + '</b><br>' +
+      'keyCode: <b>' + e.keyCode + '</b><br>' +
+      'which: <b>' + e.which + '</b><br>' +
+      'code: <b>' + e.code + '</b>';
+  });
 boot();
 </script>
 </body>
