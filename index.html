@@ -962,6 +962,7 @@ function selectChannel(index, tileEl){
 
   document.querySelectorAll('.tile.playing').forEach(t => t.classList.remove('playing'));
   tileEl.classList.add('playing');
+  _lastFocusedIdx = index; /* remember position */
 
   el('empty-state').style.display = 'none';
   el('now-watching').style.display = 'flex';
@@ -1227,16 +1228,24 @@ function getAction(e){ return KEY_MAP[e.keyCode] || KEY_MAP[e.which] || null; }
 function getTiles(){ return Array.from(el('dock').querySelectorAll('.tile')); }
 
 let _autoPlayTimer = null;
+let _lastFocusedIdx = 0; /* remember where we were */
 
 function focusTile(idx){
   const tiles = getTiles();
   if (!tiles.length) return;
+  /* clamp — never wrap back to start */
   idx = Math.max(0, Math.min(idx, tiles.length - 1));
+  _lastFocusedIdx = idx;
   tiles[idx].focus();
   tiles[idx].scrollIntoView({ block:'nearest', inline:'nearest' });
-  /* Auto-play after 1.5s of resting on a tile */
+
+  /* Cancel any pending auto-play, then start a fresh 2s timer.
+     Only fires if user stops pressing buttons for 2 seconds. */
   clearTimeout(_autoPlayTimer);
-  _autoPlayTimer = setTimeout(() => tiles[idx] && tiles[idx].click(), 1500);
+  _autoPlayTimer = setTimeout(() => {
+    const t = getTiles()[_lastFocusedIdx];
+    if (t) t.click();
+  }, 2000);
 }
 
 function currentTileIdx(){
@@ -1251,7 +1260,8 @@ function attachRemoteHandlers(){
   document.addEventListener('keydown', function(e){
     if (e.keyCode === 9) e.preventDefault();
   }, true);
-  setTimeout(() => focusTile(0), 150);
+  /* Focus whichever tile was last playing, or tile 0 */
+  setTimeout(() => focusTile(_lastFocusedIdx), 150);
 }
 
 function onRemoteKeydown(e){
@@ -1266,7 +1276,7 @@ function onRemoteKeydown(e){
   if (!overlayVisible){
     showOverlay();
     resetHideTimer();
-    focusTile(0);
+    focusTile(_lastFocusedIdx);
     return;
   }
 
@@ -1300,34 +1310,38 @@ function onRemoteKeydown(e){
   const tileIdx = tiles.indexOf(focused);
   const isTile = tileIdx !== -1;
 
-  /* Ch Down = next channel, Ch Up = previous channel */
+  /* Ch▼ = next channel, Ch▲ = previous — NO wrap-around */
   if (action === 'down'){
     if (isSignout){ focusTile(0); }
-    else if (isTile){ focusTile(tileIdx + 1 < tiles.length ? tileIdx + 1 : 0); }
-    else { focusTile(0); }
+    else if (isTile){
+      if (tileIdx + 1 < tiles.length) focusTile(tileIdx + 1);
+      /* already at last channel — stay, don't wrap */
+    } else { focusTile(_lastFocusedIdx); }
     return;
   }
 
   if (action === 'up'){
     if (isTile){
-      if (tileIdx === 0) el('signout-btn').focus();
-      else focusTile(tileIdx - 1);
-    }
+      if (tileIdx > 0) focusTile(tileIdx - 1);
+      /* already at first — stay */
+    } else if (isSignout){ /* stay on signout */ }
+    else { focusTile(_lastFocusedIdx); }
     return;
   }
 
   if (action === 'left'){
-    if (isTile){ tileIdx === 0 ? el('signout-btn').focus() : focusTile(tileIdx - 1); }
-    else { focusTile(0); }
+    if (isTile){ tileIdx > 0 ? focusTile(tileIdx - 1) : el('signout-btn').focus(); }
+    else { focusTile(_lastFocusedIdx); }
     return;
   }
 
   if (action === 'right'){
-    isTile ? focusTile(tileIdx + 1) : focusTile(0);
+    if (isTile && tileIdx + 1 < tiles.length) focusTile(tileIdx + 1);
+    else if (!isTile) focusTile(_lastFocusedIdx);
     return;
   }
 
-  focusTile(0);
+  focusTile(_lastFocusedIdx);
 }
 
 /* ---------- toast ---------- */
@@ -1340,28 +1354,7 @@ function showToast(msg){
   toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-/* ---------- TV REMOTE KEY DEBUGGER — shows key codes on screen ---------- */
-(function(){
-  const dbg = document.createElement('div');
-  dbg.id = 'key-debug';
-  dbg.style.cssText = [
-    'position:fixed','top:10px','right:10px','z-index:9999',
-    'background:rgba(0,0,0,0.85)','color:#fff','font-size:20px',
-    'font-family:monospace','padding:12px 18px','border-radius:8px',
-    'border:2px solid #e0141c','min-width:220px','text-align:left',
-    'pointer-events:none','line-height:1.6'
-  ].join(';');
-  dbg.innerHTML = 'Ch▲=prev  Ch▼=next<br>Press any key…';
-  document.body.appendChild(dbg);
 
-  window.addEventListener('keydown', function(e){
-    dbg.innerHTML =
-      'key: <b>' + e.key + '</b><br>' +
-      'keyCode: <b>' + e.keyCode + '</b><br>' +
-      'which: <b>' + e.which + '</b><br>' +
-      'code: <b>' + e.code + '</b>';
-  });
-})();
 </script>
 </body>
 </html>
