@@ -176,7 +176,6 @@
     position:fixed; inset:0;
     width:100vw; height:100vh;
     background:#000;
-    overflow:hidden;
   }
 
   /* Video fills the entire screen */
@@ -205,11 +204,14 @@
   .empty-state span{ font-size:clamp(11px, 1.4vw, 20px); letter-spacing:1px; }
 
   .buffer-spinner{
-    position:fixed; inset:0;
+    position:absolute;
+    top:50%; left:50%;
+    transform:translate(-50%, -50%);
     display:none;
+    flex-direction:column;
     align-items:center; justify-content:center;
     pointer-events:none;
-    z-index:50;
+    z-index:99;
   }
   .buffer-spinner.show{ display:flex; }
   .buffer-spinner-inner{
@@ -599,8 +601,6 @@ let hls = null;
 let hideTimer = null;
 let overlayVisible = true;
 let hasStartedPlayback = false;
-let focusGrid = []; // array of rows, each row an array of tile elements
-let activeTileEl = null;
 /* ============================================================
    SUPABASE via plain fetch() — no SDK needed.
    Works on any browser that supports fetch (virtually universal).
@@ -910,53 +910,14 @@ function renderDock(){
       ${ch.clickCount > 0 ? `<div class="tile-views">👁 ${ch.clickCount}</div>` : ''}
     `;
     tile.addEventListener('click', () => selectChannel(i, tile));
-    tile.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        selectChannel(i, tile);
-      }
-    });
     dock.appendChild(tile);
   });
-
-  buildFocusGrid();
 }
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function escapeAttr(s){ return escapeHtml(s); }
-
-/* Group tiles into visual rows (by offsetTop) so ArrowUp/Down can jump
-   to the nearest column in the adjacent row — works regardless of how
-   many columns the responsive grid ends up with. */
-function buildFocusGrid(){
-  requestAnimationFrame(() => {
-    const tiles = Array.from(el('dock').children);
-    focusGrid = [];
-    let currentRow = [];
-    let lastTop = null;
-    tiles.forEach(t => {
-      const top = t.offsetTop;
-      if (lastTop === null || Math.abs(top - lastTop) < 4) {
-        currentRow.push(t);
-      } else {
-        focusGrid.push(currentRow);
-        currentRow = [t];
-      }
-      lastTop = top;
-    });
-    if (currentRow.length) focusGrid.push(currentRow);
-  });
-}
-
-function findTilePosition(tileEl){
-  for (let r = 0; r < focusGrid.length; r++) {
-    const c = focusGrid[r].indexOf(tileEl);
-    if (c !== -1) return { r, c };
-  }
-  return null;
-}
 
 /* ---------- playback ---------- */
 function selectChannel(index, tileEl){
@@ -965,7 +926,6 @@ function selectChannel(index, tileEl){
 
   document.querySelectorAll('.tile.playing').forEach(t => t.classList.remove('playing'));
   tileEl.classList.add('playing');
-  activeTileEl = tileEl;
 
   el('empty-state').style.display = 'none';
   el('now-watching').style.display = 'flex';
@@ -1185,7 +1145,7 @@ function showOverlay(){
   el('overlay').classList.remove('hidden');
 }
 function hideOverlay(){
-  if (!hasStartedPlayback) return; // never hide before something is playing
+  if (!hasStartedPlayback) return;
   overlayVisible = false;
   el('overlay').classList.add('hidden');
 }
@@ -1195,86 +1155,129 @@ function resetHideTimer(){
   hideTimer = setTimeout(hideOverlay, OVERLAY_HIDE_DELAY);
 }
 
-/* ---------- remote / keyboard navigation on home screen ---------- */
+/* ---------- TV REMOTE NAVIGATION ----------
+   TV remotes send standard arrow/enter keys BUT the key codes vary by
+   manufacturer. We normalise everything here into a simple direction string.
+   Supported: LG webOS, Samsung Tizen, Android TV, Fire TV, Roku (via HDMI),
+   generic Smart TV browsers. */
+
+const COLS = 8; // must match grid-template-columns repeat count
+
+function getRemoteAction(e){
+  switch(e.keyCode || e.which){
+    // Arrow keys — all vendors
+    case 37: case 263: return 'left';
+    case 38: case 265: return 'up';
+    case 39: case 262: return 'right';
+    case 40: case 264: return 'down';
+    // OK / Enter / Select / Centre button
+    case 13: case 32: case 23: case 85: return 'enter';
+    // Back / Escape / Return
+    case 27: case 8: case 461: case 10009: case 4: return 'back';
+    // Play/Pause toggle (some remotes send this)
+    case 415: case 19: case 179: return 'playpause';
+    default: return null;
+  }
+}
+
 function attachRemoteHandlers(){
-  document.addEventListener('keydown', onHomeKeydown);
-  document.addEventListener('click', onHomeClick);
-  document.addEventListener('mousemove', onHomeActivity);
+  // Hide mouse cursor — TV users don't need it
+  document.body.style.cursor = 'none';
+
+  document.addEventListener('keydown', onRemoteKeydown);
+
+  // If a real mouse moves, show cursor temporarily
+  document.addEventListener('mousemove', () => {
+    document.body.style.cursor = 'default';
+    clearTimeout(window._cursorHideTimer);
+    window._cursorHideTimer = setTimeout(() => {
+      document.body.style.cursor = 'none';
+    }, 3000);
+    if (overlayVisible) resetHideTimer();
+  });
+
+  // Auto-focus the first tile immediately so remote works right away
+  setTimeout(() => {
+    const tiles = el('dock').querySelectorAll('.tile');
+    if (tiles.length) tiles[0].focus();
+  }, 100);
 }
 
-function onHomeClick(){
-  if (!el('screen-home').classList.contains('active')) return;
-  if (!overlayVisible) { showOverlay(); resetHideTimer(); return; }
-  resetHideTimer();
-}
-function onHomeActivity(){
-  if (!el('screen-home').classList.contains('active')) return;
-  if (overlayVisible) resetHideTimer();
-}
-
-function onHomeKeydown(e){
+function onRemoteKeydown(e){
   if (!el('screen-home').classList.contains('active')) return;
 
-  const navKeys = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',' ','Escape','Backspace'];
-  if (!navKeys.includes(e.key)) return;
+  const action = getRemoteAction(e);
+  if (!action) return;
+  e.preventDefault();
 
-  // First press while overlay is hidden: just reveal it, don't act further.
-  if (!overlayVisible) {
-    e.preventDefault();
+  // Any key press = show overlay and reset hide timer
+  if (!overlayVisible){
     showOverlay();
     resetHideTimer();
-    if (activeTileEl) activeTileEl.focus();
-    return;
-  }
-
-  if (e.key === 'Escape' || e.key === 'Backspace') {
-    e.preventDefault();
-    if (hasStartedPlayback) { clearTimeout(hideTimer); hideOverlay(); }
+    const tiles = el('dock').querySelectorAll('.tile');
+    if (tiles.length) tiles[0].focus();
     return;
   }
 
   resetHideTimer();
 
-  const active = document.activeElement;
-  const isSignout = active && active.id === 'signout-btn';
-  const isTile = active && active.classList && active.classList.contains('tile');
-
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
-    e.preventDefault();
-
-    if (isSignout) {
-      if (e.key === 'ArrowDown' && focusGrid[0] && focusGrid[0][0]) focusGrid[0][0].focus();
-      return;
-    }
-
-    if (isTile) {
-      const pos = findTilePosition(active);
-      if (!pos) return;
-      let { r, c } = pos;
-
-      if (e.key === 'ArrowRight') {
-        if (focusGrid[r][c + 1]) focusGrid[r][c + 1].focus();
-      } else if (e.key === 'ArrowLeft') {
-        if (c === 0) { el('signout-btn').focus(); }
-        else if (focusGrid[r][c - 1]) focusGrid[r][c - 1].focus();
-      } else if (e.key === 'ArrowDown') {
-        if (focusGrid[r + 1]) {
-          const target = focusGrid[r + 1][c] || focusGrid[r + 1][focusGrid[r + 1].length - 1];
-          target.focus();
-        }
-      } else if (e.key === 'ArrowUp') {
-        if (r === 0) { el('signout-btn').focus(); }
-        else {
-          const target = focusGrid[r - 1][c] || focusGrid[r - 1][focusGrid[r - 1].length - 1];
-          target.focus();
-        }
-      }
-      return;
-    }
-
-    // nothing sensible focused — default to first tile
-    if (focusGrid[0] && focusGrid[0][0]) focusGrid[0][0].focus();
+  if (action === 'back'){
+    if (hasStartedPlayback) hideOverlay();
+    return;
   }
+
+  if (action === 'playpause'){
+    const video = el('player');
+    if (video.paused) video.play().catch(()=>{});
+    else video.pause();
+    return;
+  }
+
+  if (action === 'enter'){
+    const focused = document.activeElement;
+    if (focused) focused.click();
+    return;
+  }
+
+  // Arrow navigation
+  const focused = document.activeElement;
+  const tiles = Array.from(el('dock').querySelectorAll('.tile'));
+  const signout = el('signout-btn');
+  const isSignout = focused === signout;
+  const tileIdx = tiles.indexOf(focused);
+  const isTile = tileIdx !== -1;
+
+  if (isSignout){
+    if (action === 'down' || action === 'left' || action === 'right'){
+      // Move down from signout into first tile
+      if (tiles.length) tiles[0].focus();
+    }
+    return;
+  }
+
+  if (isTile){
+    const col = tileIdx % COLS;
+    const row = Math.floor(tileIdx / COLS);
+    const totalRows = Math.ceil(tiles.length / COLS);
+
+    if (action === 'right'){
+      if (tileIdx + 1 < tiles.length) tiles[tileIdx + 1].focus();
+    } else if (action === 'left'){
+      if (col === 0) signout.focus();
+      else tiles[tileIdx - 1].focus();
+    } else if (action === 'down'){
+      const next = tileIdx + COLS;
+      if (next < tiles.length) tiles[next].focus();
+      else tiles[tiles.length - 1].focus(); // last row partial
+    } else if (action === 'up'){
+      if (row === 0) signout.focus();
+      else tiles[tileIdx - COLS].focus();
+    }
+    return;
+  }
+
+  // Nothing useful focused — land on first tile
+  if (tiles.length) tiles[0].focus();
 }
 
 /* ---------- toast ---------- */
