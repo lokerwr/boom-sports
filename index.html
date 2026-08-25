@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<!-- Disable LG webOS / browser built-in spatial navigation so our code handles all keys -->
+<meta name="spatialNavigation" content="disable" />
 <title>Boom Sports</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -171,7 +173,20 @@
   }
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
-  /* ============ HOME / PLAYER SCREEN — fully fluid for any TV ============ */
+  /* Strong visible focus ring for TV remote navigation */
+  :focus { outline: none; }
+  .tile:focus{
+    border-color:var(--red) !important;
+    box-shadow: 0 0 0 3px rgba(240,20,44,0.6), 0 0 20px rgba(240,20,44,0.4) !important;
+    transform:translateY(-2px) scale(1.08) !important;
+    background:var(--card-hover) !important;
+    z-index:3;
+  }
+  .signout-btn:focus{
+    color:var(--white) !important;
+    border-color:var(--red) !important;
+    box-shadow: 0 0 0 3px rgba(240,20,44,0.6) !important;
+  }
   #screen-home{
     position:fixed; inset:0;
     width:100vw; height:100vh;
@@ -549,7 +564,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const SPORTS_TABLE = "sports_hub";
 const SPORTS_ROW_ID = "main";
 const OVERLAY_HIDE_DELAY = 5000;
-const BOOT_TIMEOUT_MS = 9000;
+const BOOT_TIMEOUT_MS = 5000;
 const DEFAULT_STREAM_URL = "https://corestream.siteyaptim.live/s-sport/index.m3u8";
 
 const el = (id) => document.getElementById(id);
@@ -591,8 +606,12 @@ setTimeout(function(){
 
 /* ---------- screen management ---------- */
 function showScreen(name){
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  el('screen-' + name).classList.add('active');
+  // Always hide the loading screen first
+  var loadEl = document.getElementById('loading');
+  if (loadEl) loadEl.style.display = 'none';
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  var target = document.getElementById('screen-' + name);
+  if (target) target.classList.add('active');
 }
 
 /* ---------- boot ---------- */
@@ -692,25 +711,42 @@ function clearSession(){
 
 async function boot(){
   try {
+    // Make absolutely sure the loading screen is visible first
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+
     // Restore a saved session (best-effort; fails silently on restricted TVs)
-    _session = loadStoredSession();
+    let session = null;
+    try { session = loadStoredSession(); } catch(e){ session = null; }
+    _session = session;
 
     bootFinished = true;
-    el('loading').style.display = 'none';
+
+    // Hide loading screen
+    if (loadingEl) loadingEl.style.display = 'none';
 
     if (_session) {
       showScreen('home');
       initHome();
     } else {
       showScreen('login');
-      el('email').focus();
+      const emailEl = document.getElementById('email');
+      if (emailEl) emailEl.focus();
     }
   } catch (err) {
+    bootFinished = true;
     showLoadingError(
-      'Couldn\'t connect',
-      (err && err.message) ? err.message : 'Could not reach the login service. Check the TV\'s internet connection and retry.'
+      'Couldn\'t start',
+      (err && err.message) ? err.message : 'Something went wrong starting the app. Please retry.'
     );
   }
+}
+
+// Wait for DOM to be fully ready before booting
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
 }
 
 /* ===================== LOGIN ===================== */
@@ -1155,129 +1191,164 @@ function resetHideTimer(){
   hideTimer = setTimeout(hideOverlay, OVERLAY_HIDE_DELAY);
 }
 
-/* ---------- TV REMOTE NAVIGATION ----------
-   TV remotes send standard arrow/enter keys BUT the key codes vary by
-   manufacturer. We normalise everything here into a simple direction string.
-   Supported: LG webOS, Samsung Tizen, Android TV, Fire TV, Roku (via HDMI),
-   generic Smart TV browsers. */
+/* =============================================================
+   TV REMOTE NAVIGATION
+   Tested key codes for LG Smart TV remotes (your exact remote):
+   - D-pad arrows fire 37/38/39/40
+   - Centre OK button fires 13
+   - EXIT fires 27 or 1001 on LG
+   - BACK fires 461 on LG webOS
+   All codes are intercepted here before the browser can use them.
+   ============================================================= */
 
-const COLS = 8; // must match grid-template-columns repeat count
+const COLS = 8;
 
-function getRemoteAction(e){
-  switch(e.keyCode || e.which){
-    // Arrow keys — all vendors
-    case 37: case 263: return 'left';
-    case 38: case 265: return 'up';
-    case 39: case 262: return 'right';
-    case 40: case 264: return 'down';
-    // OK / Enter / Select / Centre button
-    case 13: case 32: case 23: case 85: return 'enter';
-    // Back / Escape / Return
-    case 27: case 8: case 461: case 10009: case 4: return 'back';
-    // Play/Pause toggle (some remotes send this)
-    case 415: case 19: case 179: return 'playpause';
-    default: return null;
-  }
+/* Every key the remote might send — mapped to a simple action */
+const KEY_MAP = {
+  /* LEFT arrow */  37:'left',  63234:'left',
+  /* UP arrow */    38:'up',    63232:'up',
+  /* RIGHT arrow */ 39:'right', 63235:'right',
+  /* DOWN arrow */  40:'down',  63233:'down',
+  /* OK / Enter */  13:'enter', 32:'enter',
+  /* LG OK codes */ 23:'enter', 85:'enter', 406:'enter',
+  /* Back/Return */ 461:'back', 10009:'back', 8:'back',
+  /* EXIT (LG) */   27:'back',  1001:'back',
+  /* Play/Pause */  415:'playpause', 19:'playpause', 179:'playpause', 80:'playpause',
+  /* Stop */        413:'stop',
+  /* Ch up/down (the >> << buttons on your remote) */
+  427:'right', 428:'left',
+  /* Colour buttons — map to shortcuts */
+  403:'back',  /* RED = back */
+};
+
+function getAction(e){ return KEY_MAP[e.keyCode] || KEY_MAP[e.which] || null; }
+
+function getTiles(){ return Array.from(el('dock').querySelectorAll('.tile')); }
+
+function focusTile(idx){
+  const tiles = getTiles();
+  if (!tiles.length) return;
+  idx = Math.max(0, Math.min(idx, tiles.length - 1));
+  tiles[idx].focus();
+  tiles[idx].scrollIntoView({ block:'nearest', inline:'nearest' });
+}
+
+function currentTileIdx(){
+  const tiles = getTiles();
+  return tiles.indexOf(document.activeElement);
 }
 
 function attachRemoteHandlers(){
-  // Hide mouse cursor — TV users don't need it
-  document.body.style.cursor = 'none';
+  /* Capture ALL keydown events before anything else sees them */
+  document.addEventListener('keydown', onRemoteKeydown, true);
 
-  document.addEventListener('keydown', onRemoteKeydown);
+  /* Also listen for keyup in capture phase — some LG remotes fire keyup only */
+  document.addEventListener('keyup', function(e){
+    if (KEY_MAP[e.keyCode] || KEY_MAP[e.which]) e.preventDefault();
+  }, true);
 
-  // If a real mouse moves, show cursor temporarily
-  document.addEventListener('mousemove', () => {
-    document.body.style.cursor = 'default';
-    clearTimeout(window._cursorHideTimer);
-    window._cursorHideTimer = setTimeout(() => {
-      document.body.style.cursor = 'none';
-    }, 3000);
-    if (overlayVisible) resetHideTimer();
-  });
+  /* Block Tab key — LG browser uses Tab for spatial nav which we don't want */
+  document.addEventListener('keydown', function(e){
+    if (e.keyCode === 9) e.preventDefault();
+  }, true);
 
-  // Auto-focus the first tile immediately so remote works right away
-  setTimeout(() => {
-    const tiles = el('dock').querySelectorAll('.tile');
-    if (tiles.length) tiles[0].focus();
-  }, 100);
+  /* Auto-focus first tile as soon as channels are rendered */
+  setTimeout(() => focusTile(0), 150);
 }
 
 function onRemoteKeydown(e){
-  if (!el('screen-home').classList.contains('active')) return;
-
-  const action = getRemoteAction(e);
+  /* Always block default for ALL remote keys regardless of screen */
+  const action = getAction(e);
   if (!action) return;
   e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
 
-  // Any key press = show overlay and reset hide timer
+  if (!el('screen-home').classList.contains('active')) return;
+
+  /* Any key wakes the overlay */
   if (!overlayVisible){
     showOverlay();
     resetHideTimer();
-    const tiles = el('dock').querySelectorAll('.tile');
-    if (tiles.length) tiles[0].focus();
+    focusTile(0);
     return;
   }
 
   resetHideTimer();
 
+  /* --- BACK --- */
   if (action === 'back'){
     if (hasStartedPlayback) hideOverlay();
     return;
   }
 
-  if (action === 'playpause'){
-    const video = el('player');
-    if (video.paused) video.play().catch(()=>{});
-    else video.pause();
+  /* --- PLAY/PAUSE --- */
+  if (action === 'playpause' || action === 'stop'){
+    const v = el('player');
+    if (v.paused) v.play().catch(()=>{});
+    else v.pause();
     return;
   }
 
+  /* --- ENTER / OK --- */
   if (action === 'enter'){
-    const focused = document.activeElement;
-    if (focused) focused.click();
+    const f = document.activeElement;
+    if (f && typeof f.click === 'function') f.click();
     return;
   }
 
-  // Arrow navigation
+  /* --- ARROW NAVIGATION --- */
+  const tiles = getTiles();
+  if (!tiles.length) return;
+
   const focused = document.activeElement;
-  const tiles = Array.from(el('dock').querySelectorAll('.tile'));
-  const signout = el('signout-btn');
-  const isSignout = focused === signout;
+  const isSignout = focused === el('signout-btn');
   const tileIdx = tiles.indexOf(focused);
   const isTile = tileIdx !== -1;
 
-  if (isSignout){
-    if (action === 'down' || action === 'left' || action === 'right'){
-      // Move down from signout into first tile
-      if (tiles.length) tiles[0].focus();
+  if (action === 'up'){
+    if (isTile){
+      const newIdx = tileIdx - COLS;
+      if (newIdx >= 0) focusTile(newIdx);
+      else el('signout-btn').focus(); /* top row → go to sign out */
+    }
+    /* already on signout or elsewhere — stay */
+    return;
+  }
+
+  if (action === 'down'){
+    if (isSignout){
+      focusTile(0);
+    } else if (isTile){
+      const newIdx = tileIdx + COLS;
+      if (newIdx < tiles.length) focusTile(newIdx);
+      else focusTile(tiles.length - 1); /* last partial row */
+    } else {
+      focusTile(0);
     }
     return;
   }
 
-  if (isTile){
-    const col = tileIdx % COLS;
-    const row = Math.floor(tileIdx / COLS);
-    const totalRows = Math.ceil(tiles.length / COLS);
-
-    if (action === 'right'){
-      if (tileIdx + 1 < tiles.length) tiles[tileIdx + 1].focus();
-    } else if (action === 'left'){
-      if (col === 0) signout.focus();
-      else tiles[tileIdx - 1].focus();
-    } else if (action === 'down'){
-      const next = tileIdx + COLS;
-      if (next < tiles.length) tiles[next].focus();
-      else tiles[tiles.length - 1].focus(); // last row partial
-    } else if (action === 'up'){
-      if (row === 0) signout.focus();
-      else tiles[tileIdx - COLS].focus();
+  if (action === 'left'){
+    if (isTile){
+      if (tileIdx === 0) el('signout-btn').focus();
+      else focusTile(tileIdx - 1);
+    } else {
+      focusTile(0);
     }
     return;
   }
 
-  // Nothing useful focused — land on first tile
-  if (tiles.length) tiles[0].focus();
+  if (action === 'right'){
+    if (isTile){
+      focusTile(tileIdx + 1);
+    } else if (isSignout){
+      focusTile(0);
+    } else {
+      focusTile(0);
+    }
+    return;
+  }
 }
 
 /* ---------- toast ---------- */
@@ -1311,7 +1382,7 @@ function showToast(msg){
       'which: <b>' + e.which + '</b><br>' +
       'code: <b>' + e.code + '</b>';
   });
-boot();
+})();
 </script>
 </body>
 </html>
