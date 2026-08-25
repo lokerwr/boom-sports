@@ -1193,37 +1193,40 @@ function resetHideTimer(){
 
 /* =============================================================
    TV REMOTE NAVIGATION
-   Tested key codes for LG Smart TV remotes (your exact remote):
-   - D-pad arrows fire 37/38/39/40
-   - Centre OK button fires 13
-   - EXIT fires 27 or 1001 on LG
-   - BACK fires 461 on LG webOS
-   All codes are intercepted here before the browser can use them.
+   CONFIRMED working keys from debugger on this specific TV:
+   - Ch Up   = keyCode 33 (ChannelUp)   → navigate UP / prev channel
+   - Ch Down = keyCode 34 (ChannelDown) → navigate DOWN / next channel
+   D-pad arrows and OK are blocked by this TV browser — we use
+   Ch Up/Down to browse, and a long-press to select (via timer).
    ============================================================= */
 
 const COLS = 8;
 
-/* Every key the remote might send — mapped to a simple action */
 const KEY_MAP = {
-  /* LEFT arrow */  37:'left',  63234:'left',
-  /* UP arrow */    38:'up',    63232:'up',
-  /* RIGHT arrow */ 39:'right', 63235:'right',
-  /* DOWN arrow */  40:'down',  63233:'down',
-  /* OK / Enter */  13:'enter', 32:'enter',
-  /* LG OK codes */ 23:'enter', 85:'enter', 406:'enter',
-  /* Back/Return */ 461:'back', 10009:'back', 8:'back',
-  /* EXIT (LG) */   27:'back',  1001:'back',
-  /* Play/Pause */  415:'playpause', 19:'playpause', 179:'playpause', 80:'playpause',
-  /* Stop */        413:'stop',
-  /* Ch up/down (the >> << buttons on your remote) */
-  427:'right', 428:'left',
-  /* Colour buttons — map to shortcuts */
-  403:'back',  /* RED = back */
+  /* Ch Up — move focus up one row */
+  33: 'up',
+  /* Ch Down — move focus down one row */
+  34: 'down',
+  /* Arrow keys — may work on some browsers */
+  37: 'left',  38: 'up',   39: 'right', 40: 'down',
+  /* OK / Enter */
+  13: 'enter', 32: 'enter', 23: 'enter', 85: 'enter', 406: 'enter',
+  /* Back */
+  461: 'back', 10009: 'back', 27: 'back', 8: 'back',
+  /* Play/Pause */
+  415: 'playpause', 19: 'playpause', 179: 'playpause',
+  /* Colour buttons */
+  403: 'back',   /* RED   = back/hide overlay */
+  404: 'enter',  /* GREEN = select/play */
+  405: 'right',  /* YELLOW = next channel */
+  406: 'left',   /* BLUE  = prev channel */
 };
 
 function getAction(e){ return KEY_MAP[e.keyCode] || KEY_MAP[e.which] || null; }
 
 function getTiles(){ return Array.from(el('dock').querySelectorAll('.tile')); }
+
+let _autoPlayTimer = null;
 
 function focusTile(idx){
   const tiles = getTiles();
@@ -1231,33 +1234,27 @@ function focusTile(idx){
   idx = Math.max(0, Math.min(idx, tiles.length - 1));
   tiles[idx].focus();
   tiles[idx].scrollIntoView({ block:'nearest', inline:'nearest' });
+  /* Auto-play after 1.5s of resting on a tile */
+  clearTimeout(_autoPlayTimer);
+  _autoPlayTimer = setTimeout(() => tiles[idx] && tiles[idx].click(), 1500);
 }
 
 function currentTileIdx(){
-  const tiles = getTiles();
-  return tiles.indexOf(document.activeElement);
+  return getTiles().indexOf(document.activeElement);
 }
 
 function attachRemoteHandlers(){
-  /* Capture ALL keydown events before anything else sees them */
   document.addEventListener('keydown', onRemoteKeydown, true);
-
-  /* Also listen for keyup in capture phase — some LG remotes fire keyup only */
   document.addEventListener('keyup', function(e){
     if (KEY_MAP[e.keyCode] || KEY_MAP[e.which]) e.preventDefault();
   }, true);
-
-  /* Block Tab key — LG browser uses Tab for spatial nav which we don't want */
   document.addEventListener('keydown', function(e){
     if (e.keyCode === 9) e.preventDefault();
   }, true);
-
-  /* Auto-focus first tile as soon as channels are rendered */
   setTimeout(() => focusTile(0), 150);
 }
 
 function onRemoteKeydown(e){
-  /* Always block default for ALL remote keys regardless of screen */
   const action = getAction(e);
   if (!action) return;
   e.preventDefault();
@@ -1266,7 +1263,6 @@ function onRemoteKeydown(e){
 
   if (!el('screen-home').classList.contains('active')) return;
 
-  /* Any key wakes the overlay */
   if (!overlayVisible){
     showOverlay();
     resetHideTimer();
@@ -1276,79 +1272,62 @@ function onRemoteKeydown(e){
 
   resetHideTimer();
 
-  /* --- BACK --- */
   if (action === 'back'){
+    clearTimeout(_autoPlayTimer);
     if (hasStartedPlayback) hideOverlay();
     return;
   }
 
-  /* --- PLAY/PAUSE --- */
-  if (action === 'playpause' || action === 'stop'){
+  if (action === 'playpause'){
+    clearTimeout(_autoPlayTimer);
     const v = el('player');
     if (v.paused) v.play().catch(()=>{});
     else v.pause();
     return;
   }
 
-  /* --- ENTER / OK --- */
   if (action === 'enter'){
+    clearTimeout(_autoPlayTimer);
     const f = document.activeElement;
     if (f && typeof f.click === 'function') f.click();
     return;
   }
 
-  /* --- ARROW NAVIGATION --- */
   const tiles = getTiles();
   if (!tiles.length) return;
-
   const focused = document.activeElement;
   const isSignout = focused === el('signout-btn');
   const tileIdx = tiles.indexOf(focused);
   const isTile = tileIdx !== -1;
 
-  if (action === 'up'){
-    if (isTile){
-      const newIdx = tileIdx - COLS;
-      if (newIdx >= 0) focusTile(newIdx);
-      else el('signout-btn').focus(); /* top row → go to sign out */
-    }
-    /* already on signout or elsewhere — stay */
+  /* Ch Down = next channel, Ch Up = previous channel */
+  if (action === 'down'){
+    if (isSignout){ focusTile(0); }
+    else if (isTile){ focusTile(tileIdx + 1 < tiles.length ? tileIdx + 1 : 0); }
+    else { focusTile(0); }
     return;
   }
 
-  if (action === 'down'){
-    if (isSignout){
-      focusTile(0);
-    } else if (isTile){
-      const newIdx = tileIdx + COLS;
-      if (newIdx < tiles.length) focusTile(newIdx);
-      else focusTile(tiles.length - 1); /* last partial row */
-    } else {
-      focusTile(0);
+  if (action === 'up'){
+    if (isTile){
+      if (tileIdx === 0) el('signout-btn').focus();
+      else focusTile(tileIdx - 1);
     }
     return;
   }
 
   if (action === 'left'){
-    if (isTile){
-      if (tileIdx === 0) el('signout-btn').focus();
-      else focusTile(tileIdx - 1);
-    } else {
-      focusTile(0);
-    }
+    if (isTile){ tileIdx === 0 ? el('signout-btn').focus() : focusTile(tileIdx - 1); }
+    else { focusTile(0); }
     return;
   }
 
   if (action === 'right'){
-    if (isTile){
-      focusTile(tileIdx + 1);
-    } else if (isSignout){
-      focusTile(0);
-    } else {
-      focusTile(0);
-    }
+    isTile ? focusTile(tileIdx + 1) : focusTile(0);
     return;
   }
+
+  focusTile(0);
 }
 
 /* ---------- toast ---------- */
@@ -1372,7 +1351,7 @@ function showToast(msg){
     'border:2px solid #e0141c','min-width:220px','text-align:left',
     'pointer-events:none','line-height:1.6'
   ].join(';');
-  dbg.innerHTML = 'Press any remote key…';
+  dbg.innerHTML = 'Ch▲=prev  Ch▼=next<br>Press any key…';
   document.body.appendChild(dbg);
 
   window.addEventListener('keydown', function(e){
