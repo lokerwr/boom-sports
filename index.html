@@ -1180,6 +1180,12 @@ async function bestEffortIncrementClick(key){
 function showOverlay(){
   overlayVisible = true;
   el('overlay').classList.remove('hidden');
+  /* Restore focus to last channel — never reset to tile 0 */
+  setTimeout(() => {
+    const tiles = getTiles();
+    const idx = Math.max(0, Math.min(_lastFocusedIdx, tiles.length - 1));
+    if (tiles[idx]) tiles[idx].focus();
+  }, 50);
 }
 function hideOverlay(){
   if (!hasStartedPlayback) return;
@@ -1274,9 +1280,8 @@ function onRemoteKeydown(e){
   if (!el('screen-home').classList.contains('active')) return;
 
   if (!overlayVisible){
-    showOverlay();
+    showOverlay(); /* showOverlay now restores focus to _lastFocusedIdx */
     resetHideTimer();
-    focusTile(_lastFocusedIdx);
     return;
   }
 
