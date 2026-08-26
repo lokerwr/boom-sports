@@ -2,18 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<!-- Disable LG webOS / browser built-in spatial navigation so our code handles all keys -->
-<meta name="spatialNavigation" content="disable" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Boom Sports</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<!-- HLS.js — used only when the browser cannot play HLS natively -->
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
-<!-- p2p-media-loader is NOT loaded — keeping it simple and compatible for TV browsers -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js" onerror="window.__scriptLoadFailed && window.__scriptLoadFailed('hls.js')"></script>
 
 <style>
   :root{
@@ -173,139 +169,88 @@
   }
   @keyframes spin{ to{ transform:rotate(360deg); } }
 
-  /* Strong visible focus ring for TV remote navigation */
-  :focus { outline: none; }
-  .tile:focus{
-    border-color:var(--red) !important;
-    box-shadow: 0 0 0 3px rgba(240,20,44,0.6), 0 0 20px rgba(240,20,44,0.4) !important;
-    transform:translateY(-2px) scale(1.08) !important;
-    background:var(--card-hover) !important;
-    z-index:3;
-  }
-  .signout-btn:focus{
-    color:var(--white) !important;
-    border-color:var(--red) !important;
-    box-shadow: 0 0 0 3px rgba(240,20,44,0.6) !important;
-  }
-  #screen-home{
-    position:fixed; inset:0;
-    width:100vw; height:100vh;
-    background:#000;
-  }
-
-  /* Video fills the entire screen */
+  /* ============ HOME / PLAYER SCREEN ============ */
+  #screen-home{ background:#000; }
   .player-stage{
     position:absolute; inset:0;
-    width:100%; height:100%;
     background:#000;
+    display:flex; align-items:center; justify-content:center;
   }
   #player{
-    position:absolute; inset:0;
     width:100%; height:100%;
     object-fit:cover;
     background:#000;
   }
-
   .empty-state{
     position:absolute; inset:0;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:1.5vh;
+    gap:14px;
     color:var(--muted);
     text-align:center;
     pointer-events:none;
-    padding:0 5vw;
   }
-  .empty-state .display{ font-size:clamp(18px, 3vw, 48px); color:var(--white); }
-  .empty-state span{ font-size:clamp(11px, 1.4vw, 20px); letter-spacing:1px; }
+  .empty-state .display{ font-size:34px; color:var(--white); }
+  .empty-state span{ font-size:14px; letter-spacing:1px; }
 
   .buffer-spinner{
-    position:absolute;
-    top:50%; left:50%;
-    transform:translate(-50%, -50%);
+    position:absolute; inset:0;
     display:none;
-    flex-direction:column;
     align-items:center; justify-content:center;
     pointer-events:none;
-    z-index:99;
   }
   .buffer-spinner.show{ display:flex; }
-  .buffer-spinner-inner{
-    display:flex; flex-direction:column; align-items:center; gap:16px;
-  }
-  .buffer-spinner-ring{
-    width:72px; height:72px;
-    border:5px solid rgba(255,255,255,0.15);
+  .buffer-spinner div{
+    width:56px; height:56px;
+    border:5px solid rgba(255,255,255,0.18);
     border-top-color:var(--red);
-    border-right-color:rgba(240,20,44,0.5);
     border-radius:50%;
-    animation:spin .75s linear infinite;
-    box-shadow: 0 0 28px rgba(240,20,44,0.4);
-  }
-  .buffer-spinner-label{
-    font-size:13px; font-weight:700; letter-spacing:2px;
-    color:rgba(255,255,255,0.75);
-    text-transform:uppercase;
-    animation:fadepulse 1.4s ease-in-out infinite;
-  }
-  @keyframes fadepulse{
-    0%,100%{ opacity:1; }
-    50%{ opacity:0.4; }
+    animation:spin .8s linear infinite;
   }
 
-  /* ---- overlay — sits above the video, fills the screen ---- */
+  /* ---- overlay (fades in/out) ---- */
   #overlay{
     position:absolute; inset:0;
-    width:100%; height:100%;
     display:flex; flex-direction:column; justify-content:space-between;
     opacity:1;
     transition:opacity .45s ease;
     pointer-events:auto;
-    z-index:10;
   }
   #overlay.hidden{
     opacity:0;
     pointer-events:none;
   }
 
-  /* gradient scrims */
   .scrim-top{
-    position:absolute; top:0; left:0; right:0; height:28vh;
-    background:linear-gradient(180deg, rgba(0,0,0,0.88), transparent);
+    position:absolute; top:0; left:0; right:0; height:220px;
+    background:linear-gradient(180deg, rgba(0,0,0,0.85), transparent);
     pointer-events:none;
   }
   .scrim-bottom{
-    position:absolute; bottom:0; left:0; right:0; height:42%;
-    background:linear-gradient(0deg, rgba(0,0,0,0.94) 10%, rgba(0,0,0,0.60) 55%, transparent);
+    position:absolute; bottom:0; left:0; right:0; height:52%;
+    background:linear-gradient(0deg, rgba(0,0,0,0.92) 15%, rgba(0,0,0,0.55) 60%, transparent);
     pointer-events:none;
   }
 
-  /* ---- top bar ---- */
   .overlay-top{
     position:relative; z-index:2;
     display:flex; align-items:center; justify-content:space-between;
-    padding: clamp(12px,2vh,32px) clamp(16px,3vw,56px) 0;
-    flex-shrink:0;
+    padding: 32px 48px 0;
   }
-  .top-left{ display:flex; align-items:center; gap:clamp(8px,1.4vw,22px); flex-wrap:wrap; }
-
-  .home-logo{
-    display:flex; align-items:baseline; gap:2px;
-    font-size:clamp(16px,1.8vw,28px);
-    white-space:nowrap;
-  }
+  .top-left{ display:flex; align-items:center; gap:22px; }
+  .home-logo{ display:flex; align-items:baseline; gap:2px; font-size:26px; }
+  .home-logo img{ height:34px; display:block; }
   .home-logo .boom{ color:var(--white); }
   .home-logo .sports{ color:var(--red); }
 
   .now-watching{
-    display:flex; align-items:center; gap:clamp(5px,0.6vw,10px);
-    padding:clamp(4px,0.5vh,8px) clamp(8px,1vw,16px) clamp(4px,0.5vh,8px) clamp(6px,0.7vw,12px);
-    background:rgba(255,255,255,0.07);
+    display:flex; align-items:center; gap:10px;
+    padding:8px 16px 8px 10px;
+    background:rgba(255,255,255,0.06);
     border:1px solid var(--line);
     border-radius:30px;
-    max-width:30vw;
   }
   .live-dot{
-    width:clamp(6px,0.55vw,9px); height:clamp(6px,0.55vw,9px); border-radius:50%;
+    width:9px; height:9px; border-radius:50%;
     background:var(--red);
     box-shadow:0 0 10px var(--red-glow);
     animation:pulse 1.4s ease-in-out infinite;
@@ -315,25 +260,18 @@
     0%,100%{ opacity:1; transform:scale(1); }
     50%{ opacity:.5; transform:scale(0.8); }
   }
-  .now-watching .nw-label{
-    font-size:clamp(7px,0.6vw,11px); font-weight:800; letter-spacing:1.5px; color:var(--muted);
-    white-space:nowrap;
-  }
-  .now-watching .nw-name{
-    font-size:clamp(10px,1vw,16px); font-weight:700; color:var(--white);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  }
+  .now-watching .nw-label{ font-size:10px; font-weight:800; letter-spacing:1.5px; color:var(--muted); }
+  .now-watching .nw-name{ font-size:15px; font-weight:700; color:var(--white); }
 
   .signout-btn{
-    background:rgba(255,255,255,0.07);
+    background:rgba(255,255,255,0.06);
     border:2px solid var(--line);
     color:var(--muted);
-    border-radius:clamp(5px,0.6vw,10px);
-    padding:clamp(7px,0.8vh,12px) clamp(12px,1.3vw,22px);
-    font-size:clamp(9px,0.85vw,13px); font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
-    cursor:pointer; outline:none; white-space:nowrap;
+    border-radius:10px;
+    padding:12px 22px;
+    font-size:13px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
+    cursor:pointer; outline:none;
     transition:box-shadow .15s, color .15s, border-color .15s;
-    flex-shrink:0;
   }
   .signout-btn:focus, .signout-btn:hover{
     color:var(--white);
@@ -341,33 +279,33 @@
     box-shadow:var(--focus-ring);
   }
 
-  /* ---- bottom channel dock ---- */
   .overlay-bottom{
     position:relative; z-index:2;
-    padding: 0 20px 14px;
-    flex-shrink:0;
+    padding: 0 48px 40px;
   }
   .dock-heading{
-    display:flex; align-items:baseline; gap:8px;
-    margin-bottom:6px;
+    display:flex; align-items:baseline; gap:12px;
+    margin-bottom:16px;
   }
-  .dock-heading .display{ font-size:14px; color:var(--white); }
-  .dock-heading span{ font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .dock-heading .display{ font-size:24px; color:var(--white); }
+  .dock-heading span{ font-size:12px; color:var(--muted); letter-spacing:1px; }
 
   .dock{
     display:grid;
-    grid-template-columns:repeat(8, 1fr);
-    gap:8px;
-    padding:2px 2px 4px;
+    grid-template-columns:repeat(auto-fill, minmax(168px, 1fr));
+    gap:16px;
+    max-height:38vh;
+    overflow-y:auto;
+    padding:4px 4px 8px;
   }
 
   .tile{
     position:relative;
     background:var(--card);
     border:2px solid transparent;
-    border-radius:8px;
-    padding:8px 6px;
-    display:flex; flex-direction:column; align-items:center; gap:4px;
+    border-radius:14px;
+    padding:16px 14px;
+    display:flex; flex-direction:column; align-items:center; gap:10px;
     cursor:pointer;
     outline:none;
     transition:transform .15s, box-shadow .15s, background .15s, border-color .15s;
@@ -376,35 +314,37 @@
   .tile:focus{
     border-color:var(--red);
     box-shadow:var(--focus-ring);
-    transform:translateY(-2px) scale(1.04);
+    transform:translateY(-4px) scale(1.04);
     background:var(--card-hover);
     z-index:3;
   }
-  .tile.playing{ border-color:var(--red); }
+  .tile.playing{
+    border-color:var(--red);
+  }
   .tile.playing::after{
     content:'';
-    position:absolute; top:5px; right:5px;
-    width:6px; height:6px; border-radius:50%;
+    position:absolute; top:8px; right:8px;
+    width:8px; height:8px; border-radius:50%;
     background:var(--red);
-    box-shadow:0 0 6px var(--red-glow);
+    box-shadow:0 0 8px var(--red-glow);
   }
   .tile-logo{
-    width:32px; height:32px; border-radius:50%;
+    width:56px; height:56px; border-radius:50%;
     background:#0E0E11;
     display:flex; align-items:center; justify-content:center;
     overflow:hidden; flex-shrink:0;
     border:1px solid var(--line);
   }
   .tile-logo img{ width:100%; height:100%; object-fit:contain; }
-  .tile-logo .fallback{ font-size:14px; }
+  .tile-logo .fallback{ font-size:22px; }
   .tile-name{
-    font-size:10px; font-weight:700; text-align:center;
+    font-size:13px; font-weight:700; text-align:center;
     color:var(--white);
-    line-height:1.2;
+    line-height:1.25;
   }
   .tile-views{
-    font-size:8px; color:var(--muted-dim); font-weight:600;
-    display:flex; align-items:center; gap:2px;
+    font-size:10px; color:var(--muted-dim); font-weight:600;
+    display:flex; align-items:center; gap:4px;
   }
 
   .loading-screen{
@@ -412,7 +352,7 @@
     display:flex; align-items:center; justify-content:center; flex-direction:column; gap:18px;
     z-index:50;
   }
-  .loading-screen .display{ font-size:clamp(24px, 4vw, 60px); }
+  .loading-screen .display{ font-size:40px; }
   .loading-screen .boom{ color:var(--white); }
   .loading-screen .sports{ color:var(--red); }
   .loading-bar{
@@ -451,15 +391,14 @@
   }
 
   .toast{
-    position:absolute; bottom:clamp(14px,2.5vh,36px); left:50%; transform:translateX(-50%);
-    background:rgba(20,20,23,0.96);
+    position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
+    background:rgba(20,20,23,0.95);
     border:1px solid var(--line);
     border-left:4px solid var(--red);
-    padding:clamp(10px,1.3vh,18px) clamp(14px,2vw,28px);
-    border-radius:clamp(7px,0.8vw,14px);
-    font-size:clamp(11px,1.2vw,18px); font-weight:600;
-    white-space:nowrap;
-    z-index:20;
+    padding:14px 22px;
+    border-radius:10px;
+    font-size:14px; font-weight:600;
+    z-index:10;
     opacity:0; pointer-events:none;
     transition:opacity .25s;
   }
@@ -512,14 +451,7 @@
       <div class="display">SELECT A CHANNEL TO START WATCHING</div>
       <span>USE YOUR REMOTE TO CHOOSE FROM THE LIST BELOW</span>
     </div>
-  </div>
-
-  <!-- Spinner is a direct child of screen-home so it always centers on the full screen -->
-  <div class="buffer-spinner" id="buffer-spinner">
-    <div class="buffer-spinner-inner">
-      <div class="buffer-spinner-ring"></div>
-      <div class="buffer-spinner-label">Loading…</div>
-    </div>
+    <div class="buffer-spinner" id="buffer-spinner"><div></div></div>
   </div>
 
   <div id="overlay">
@@ -563,9 +495,8 @@ const SUPABASE_URL = "https://wxprtwuutysqdtgxnppq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4cHJ0d3V1dHlzcWR0Z3hucHBxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NjA5MTgsImV4cCI6MjEwMTIzNjkxOH0.Qm2s3jVhcsJEauQJ7wdA5Q3x3vqjBlK2xRfw58P9kQ4";
 const SPORTS_TABLE = "sports_hub";
 const SPORTS_ROW_ID = "main";
-const OVERLAY_HIDE_DELAY = 5000;
-const BOOT_TIMEOUT_MS = 5000;
-const DEFAULT_STREAM_URL = "https://corestream.siteyaptim.live/s-sport/index.m3u8";
+const OVERLAY_HIDE_DELAY = 5000; // ms of inactivity before overlay auto-dismisses
+const BOOT_TIMEOUT_MS = 9000; // if boot hasn't finished by this point, show an on-screen error instead of spinning forever
 
 const el = (id) => document.getElementById(id);
 
@@ -606,12 +537,8 @@ setTimeout(function(){
 
 /* ---------- screen management ---------- */
 function showScreen(name){
-  // Always hide the loading screen first
-  var loadEl = document.getElementById('loading');
-  if (loadEl) loadEl.style.display = 'none';
-  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
-  var target = document.getElementById('screen-' + name);
-  if (target) target.classList.add('active');
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  el('screen-' + name).classList.add('active');
 }
 
 /* ---------- boot ---------- */
@@ -620,6 +547,9 @@ let hls = null;
 let hideTimer = null;
 let overlayVisible = true;
 let hasStartedPlayback = false;
+let currentTab = 'sports';       /* 'sports' | 'movies' */
+let currentMovies = [];          /* array of {id, title, poster_url, video_url, content_type} */
+let moviesLoaded = false;
 /* ============================================================
    SUPABASE via plain fetch() — no SDK needed.
    Works on any browser that supports fetch (virtually universal).
@@ -711,42 +641,25 @@ function clearSession(){
 
 async function boot(){
   try {
-    // Make absolutely sure the loading screen is visible first
-    const loadingEl = document.getElementById('loading');
-    if (loadingEl) loadingEl.style.display = 'flex';
-
     // Restore a saved session (best-effort; fails silently on restricted TVs)
-    let session = null;
-    try { session = loadStoredSession(); } catch(e){ session = null; }
-    _session = session;
+    _session = loadStoredSession();
 
     bootFinished = true;
-
-    // Hide loading screen
-    if (loadingEl) loadingEl.style.display = 'none';
+    el('loading').style.display = 'none';
 
     if (_session) {
       showScreen('home');
       initHome();
     } else {
       showScreen('login');
-      const emailEl = document.getElementById('email');
-      if (emailEl) emailEl.focus();
+      el('email').focus();
     }
   } catch (err) {
-    bootFinished = true;
     showLoadingError(
-      'Couldn\'t start',
-      (err && err.message) ? err.message : 'Something went wrong starting the app. Please retry.'
+      'Couldn\'t connect',
+      (err && err.message) ? err.message : 'Could not reach the login service. Check the TV\'s internet connection and retry.'
     );
   }
-}
-
-// Wait for DOM to be fully ready before booting
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', boot);
-} else {
-  boot();
 }
 
 /* ===================== LOGIN ===================== */
@@ -869,30 +782,8 @@ async function initHome(){
     renderDock();
     el('signout-btn').focus();
     attachRemoteHandlers();
-    autoPlayDefault();
   } catch(e) {
     showToast('Could not load channels. Check your connection.');
-  }
-}
-
-function autoPlayDefault(){
-  // Try to find the default URL in the channel list so the tile highlights
-  const defaultIdx = currentChannels.findIndex(ch =>
-    ch.videoUrl.trim() === DEFAULT_STREAM_URL.trim()
-  );
-
-  if (defaultIdx !== -1) {
-    // Found in list — select it properly so the tile lights up
-    const tiles = el('dock').children;
-    if (tiles[defaultIdx]) selectChannel(defaultIdx, tiles[defaultIdx]);
-  } else {
-    // Not in list — play it directly without highlighting a tile
-    el('empty-state').style.display = 'none';
-    el('now-watching').style.display = 'flex';
-    el('nw-name').textContent = 'Default Channel';
-    playStream(DEFAULT_STREAM_URL);
-    hasStartedPlayback = true;
-    resetHideTimer();
   }
 }
 
@@ -955,14 +846,123 @@ function escapeHtml(s){
 }
 function escapeAttr(s){ return escapeHtml(s); }
 
+/* ---------- tab switching ---------- */
+function switchTab(tab){
+  currentTab = tab;
+  /* update tab button styles */
+  el('tab-sports').classList.toggle('active', tab === 'sports');
+  el('tab-movies').classList.toggle('active', tab === 'movies');
+  /* show/hide panels */
+  el('panel-sports').style.display = tab === 'sports' ? '' : 'none';
+  el('panel-movies').style.display = tab === 'movies' ? '' : 'none';
+  /* reset focus index for the newly visible panel */
+  _lastFocusedIdx = 0;
+  clearTimeout(_autoPlayTimer);
+
+  if (tab === 'movies'){
+    if (!moviesLoaded) loadMovies();
+    else setTimeout(() => focusTile(0), 80);
+  } else {
+    setTimeout(() => focusTile(0), 80);
+  }
+}
+
+/* ---------- movies fetch & render ---------- */
+async function loadMovies(){
+  el('movies-count').textContent = 'Loading…';
+  try {
+    /* Fetch latest 40 movies/TV shows ordered by created_at desc */
+    const url = SUPABASE_URL + '/rest/v1/content'
+      + '?select=id,title,poster_url,video_url,content_type,created_at'
+      + '&order=created_at.desc'
+      + '&limit=40';
+    const res = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (_session ? _session.access_token : SUPABASE_ANON_KEY),
+        'Accept': 'application/json',
+      }
+    });
+    if (!res.ok) throw new Error('fetch failed');
+    currentMovies = await res.json();
+    moviesLoaded = true;
+    renderMoviesDock();
+  } catch(e) {
+    el('movies-count').textContent = 'Could not load content.';
+  }
+}
+
+function renderMoviesDock(){
+  const dock = el('movies-dock');
+  dock.innerHTML = '';
+  el('movies-count').textContent = currentMovies.length + ' titles';
+
+  currentMovies.forEach((item, i) => {
+    const tile = document.createElement('div');
+    tile.className = 'movie-tile';
+    tile.tabIndex = 0;
+    tile.dataset.index = i;
+
+    if (item.poster_url) {
+      tile.innerHTML = `
+        <img src="${escapeAttr(item.poster_url)}" alt="${escapeAttr(item.title)}"
+          onerror="this.outerHTML='<div class=\\'movie-tile-fallback\\'><span>${escapeHtml(item.title)}</span></div>'" />
+        <div class="movie-tile-badge">${item.content_type === 'tv' ? 'TV' : 'FILM'}</div>
+      `;
+    } else {
+      tile.innerHTML = `
+        <div class="movie-tile-fallback">
+          <span>${escapeHtml(item.title)}</span>
+        </div>
+        <div class="movie-tile-badge">${item.content_type === 'tv' ? 'TV' : 'FILM'}</div>
+      `;
+    }
+
+    tile.addEventListener('click', () => selectMovie(i, tile));
+    dock.appendChild(tile);
+  });
+
+  setTimeout(() => focusTile(0), 80);
+}
+
+function selectMovie(index, tileEl){
+  const item = currentMovies[index];
+  if (!item || !item.video_url) {
+    showToast('No stream available for this title.');
+    return;
+  }
+  /* Clear any channel playing state */
+  document.querySelectorAll('.tile.playing').forEach(t => t.classList.remove('playing'));
+  document.querySelectorAll('.movie-tile.playing').forEach(t => t.classList.remove('playing'));
+  tileEl.classList.add('playing');
+  _lastFocusedIdx = index;
+
+  el('empty-state').style.display = 'none';
+  el('now-watching').style.display = 'flex';
+  el('nw-name').textContent = item.title;
+
+  playStream(item.video_url);
+  hasStartedPlayback = true;
+  resetHideTimer();
+}
+
+/* Returns tiles from whichever panel is currently active */
+function getTiles(){
+  if (currentTab === 'movies'){
+    return Array.from(el('movies-dock').querySelectorAll('.movie-tile'));
+  }
+  return Array.from(el('dock').querySelectorAll('.tile'));
+}
+
 /* ---------- playback ---------- */
 function selectChannel(index, tileEl){
   const ch = currentChannels[index];
   if (!ch) return;
 
   document.querySelectorAll('.tile.playing').forEach(t => t.classList.remove('playing'));
+  document.querySelectorAll('.movie-tile.playing').forEach(t => t.classList.remove('playing'));
   tileEl.classList.add('playing');
-  _lastFocusedIdx = index; /* remember position */
+  _lastFocusedIdx = index;
 
   el('empty-state').style.display = 'none';
   el('now-watching').style.display = 'flex';
@@ -975,158 +975,46 @@ function selectChannel(index, tileEl){
   resetHideTimer();
 }
 
-/* ---------- playback ---------- */
-let retryTimer = null;
-let retryCount = 0;
-let currentUrl = null;
-const MAX_RETRIES = 4;
-const RETRY_DELAY = 3000; // ms between retries
-
-function playStream(url) {
-  currentUrl = url;
-  retryCount = 0;
-  _startStream(url);
-}
-
-function _startStream(url) {
+function playStream(url){
   const video = el('player');
   showBuffering(true);
-  startBufferWatcher();
 
-  // Tear down any previous HLS instance cleanly
-  if (hls) { try { hls.destroy(); } catch(e){} hls = null; }
-  clearTimeout(retryTimer);
-
-  try { video.pause(); } catch(e){}
+  if (hls) { hls.destroy(); hls = null; }
+  video.pause();
   video.removeAttribute('src');
   video.load();
 
-  const isHls = /\.m3u8/i.test(url) || /m3u8/i.test(url);
+  const isHls = url.includes('.m3u8');
 
-  if (isHls) {
-    // Strategy 1: native HLS (Safari, most Smart TV browsers — no library needed,
-    // no CORS library overhead, most compatible)
-    if (video.canPlayType('application/vnd.apple.mpegurl') ||
-        video.canPlayType('application/x-mpegURL')) {
-      _playNative(video, url);
-
-    // Strategy 2: HLS.js (Chrome, Firefox on TV sticks etc.)
-    } else if (window.Hls && Hls.isSupported()) {
-      _playHlsJs(video, url);
-
-    // Strategy 3: last resort — just set src and hope the browser handles it
-    } else {
-      _playNative(video, url);
-    }
-  } else {
-    // mp4 / direct URLs
-    _playNative(video, url);
-  }
-}
-
-function _playNative(video, url) {
-  video.src = url;
-  video.load();
-  video.muted = false;
-
-  const onCanPlay = () => { showBuffering(false); cleanup(); };
-  const onPlaying = () => { showBuffering(false); retryCount = 0; cleanup(); };
-  const onWaiting = () => showBuffering(true);
-  const onError   = () => { cleanup(); _handleError(); };
-  const onStalled = () => {
-    // stalled for more than 8 s = treat as error
-    clearTimeout(retryTimer);
-    retryTimer = setTimeout(() => { cleanup(); _handleError(); }, 8000);
-  };
-
-  function cleanup() {
-    video.removeEventListener('canplay',  onCanPlay);
-    video.removeEventListener('playing',  onPlaying);
-    video.removeEventListener('waiting',  onWaiting);
-    video.removeEventListener('error',    onError);
-    video.removeEventListener('stalled',  onStalled);
-    clearTimeout(retryTimer);
-  }
-
-  video.addEventListener('canplay',  onCanPlay);
-  video.addEventListener('playing',  onPlaying);
-  video.addEventListener('waiting',  onWaiting);
-  video.addEventListener('error',    onError);
-  video.addEventListener('stalled',  onStalled);
-
-  video.play().catch(() => {
-    // Autoplay blocked — try muted first, then unmute after play starts
-    video.muted = true;
-    video.play().then(() => { video.muted = false; }).catch(() => _handleError());
-  });
-}
-
-function _playHlsJs(video, url) {
-  hls = new Hls({
-    maxBufferLength: 60,
-    maxMaxBufferLength: 120,
-    maxBufferSize: 60 * 1000 * 1000,
-    lowLatencyMode: false,
-    enableWorker: true,
-    fragLoadingTimeOut: 20000,
-    manifestLoadingTimeOut: 20000,
-    levelLoadingTimeOut: 20000,
-    fragLoadingMaxRetry: 6,
-    manifestLoadingMaxRetry: 4,
-    xhrSetup: function(xhr) {
-      // Some streams need credentials omitted — this helps with CORS
-      xhr.withCredentials = false;
-    },
-  });
-
-  hls.loadSource(url);
-  hls.attachMedia(video);
-
-  hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    video.muted = false;
-    video.play().catch(() => {
-      video.muted = true;
-      video.play().then(() => { video.muted = false; }).catch(() => {});
+  if (isHls && window.Hls && Hls.isSupported()) {
+    hls = new Hls({ maxBufferLength: 30 });
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      video.muted = false;
+      video.play().catch(() => {});
     });
-  });
-
-  hls.on(Hls.Events.ERROR, (evt, data) => {
-    if (!data.fatal) return; // non-fatal — HLS.js recovers by itself
-    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-      // Try to recover network errors automatically
-      try { hls.startLoad(); } catch(e) { _handleError(); }
-    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-      try { hls.recoverMediaError(); } catch(e) { _handleError(); }
-    } else {
-      _handleError();
-    }
-  });
-
-  video.addEventListener('playing', () => { showBuffering(false); retryCount = 0; }, { once: true });
-  video.addEventListener('waiting', () => showBuffering(true));
-  video.addEventListener('canplay', () => showBuffering(false));
-}
-
-function _handleError() {
-  if (retryCount < MAX_RETRIES && currentUrl) {
-    retryCount++;
-    showToast('Reconnecting… (' + retryCount + '/' + MAX_RETRIES + ')');
-    showBuffering(true);
-    retryTimer = setTimeout(() => _startStream(currentUrl), RETRY_DELAY);
+    hls.on(Hls.Events.ERROR, (evt, data) => {
+      if (data.fatal) {
+        showToast('Stream unavailable right now.');
+        showBuffering(false);
+      }
+    });
   } else {
-    showBuffering(false);
-    showToast('Stream unavailable right now. Select another channel.');
+    video.src = url;
+    video.muted = false;
+    video.play().catch(() => {});
   }
+
+  video.oncanplay = () => showBuffering(false);
+  video.onwaiting = () => showBuffering(true);
+  video.onplaying = () => showBuffering(false);
 }
 
 function stopPlayback(){
-  clearTimeout(retryTimer);
-  retryCount = 0;
-  currentUrl = null;
-  stopBufferWatcher();
-  if (hls) { try { hls.destroy(); } catch(e){} hls = null; }
+  if (hls) { hls.destroy(); hls = null; }
   const video = el('player');
-  try { video.pause(); } catch(e){}
+  video.pause();
   video.removeAttribute('src');
   video.load();
   el('empty-state').style.display = 'flex';
@@ -1137,30 +1025,8 @@ function stopPlayback(){
   clearTimeout(hideTimer);
 }
 
-let _bufferWatcher = null;
-
 function showBuffering(show){
   el('buffer-spinner').classList.toggle('show', show);
-}
-
-/* Watches the video's readyState every 300 ms and shows the spinner
-   whenever the video has a src but isn't ready to play yet.
-   This catches loading states that don't always fire clean events
-   on older TV browsers. */
-function startBufferWatcher(){
-  stopBufferWatcher();
-  const video = el('player');
-  _bufferWatcher = setInterval(() => {
-    if (!video.src && !currentUrl) { showBuffering(false); return; }
-    // readyState < 3 (HAVE_FUTURE_DATA) means not enough data to play
-    const loading = video.readyState < 3 && !video.paused && !video.ended;
-    showBuffering(loading);
-  }, 300);
-}
-
-function stopBufferWatcher(){
-  if (_bufferWatcher) { clearInterval(_bufferWatcher); _bufferWatcher = null; }
-  showBuffering(false);
 }
 
 async function bestEffortIncrementClick(key){
@@ -1176,77 +1042,42 @@ async function bestEffortIncrementClick(key){
   }
 }
 
-/* ---------- overlay show/hide ---------- */
-function showOverlay(){
-  overlayVisible = true;
-  el('overlay').classList.remove('hidden');
-  /* Restore focus to last channel — never reset to tile 0 */
-  setTimeout(() => {
-    const tiles = getTiles();
-    const idx = Math.max(0, Math.min(_lastFocusedIdx, tiles.length - 1));
-    if (tiles[idx]) tiles[idx].focus();
-  }, 50);
-}
-function hideOverlay(){
-  if (!hasStartedPlayback) return;
-  overlayVisible = false;
-  el('overlay').classList.add('hidden');
-}
-function resetHideTimer(){
-  clearTimeout(hideTimer);
-  if (!hasStartedPlayback) return;
-  hideTimer = setTimeout(hideOverlay, OVERLAY_HIDE_DELAY);
-}
-
 /* =============================================================
    TV REMOTE NAVIGATION
-   CONFIRMED working keys from debugger on this specific TV:
-   - Ch Up   = keyCode 33 (ChannelUp)   → navigate UP / prev channel
-   - Ch Down = keyCode 34 (ChannelDown) → navigate DOWN / next channel
-   D-pad arrows and OK are blocked by this TV browser — we use
-   Ch Up/Down to browse, and a long-press to select (via timer).
+   CONFIRMED working keys: Ch▲=33, Ch▼=34
+   Tab left/right switches between Channels and Movies panels.
    ============================================================= */
-
 const COLS = 8;
-
 const KEY_MAP = {
-  /* Ch Up — move focus up one row */
-  33: 'up',
-  /* Ch Down — move focus down one row */
-  34: 'down',
-  /* Arrow keys — may work on some browsers */
-  37: 'left',  38: 'up',   39: 'right', 40: 'down',
-  /* OK / Enter */
-  13: 'enter', 32: 'enter', 23: 'enter', 85: 'enter', 406: 'enter',
-  /* Back */
-  461: 'back', 10009: 'back', 27: 'back', 8: 'back',
-  /* Play/Pause */
-  415: 'playpause', 19: 'playpause', 179: 'playpause',
-  /* Colour buttons */
-  403: 'back',   /* RED   = back/hide overlay */
-  404: 'enter',  /* GREEN = select/play */
-  405: 'right',  /* YELLOW = next channel */
-  406: 'left',   /* BLUE  = prev channel */
+  33:'up',   34:'down',          /* Ch▲ / Ch▼  — CONFIRMED */
+  37:'left', 38:'up',            /* arrow left/up */
+  39:'right',40:'down',          /* arrow right/down */
+  13:'enter',32:'enter',         /* Enter / Space */
+  23:'enter',85:'enter',         /* LG OK variants */
+  461:'back',10009:'back',       /* LG Back */
+  27:'back',                     /* Escape */
+  8:'back',                      /* Backspace */
+  415:'playpause',179:'playpause',19:'playpause', /* Play/Pause */
+  403:'back', 404:'enter',       /* Red=back, Green=select */
+  405:'right',406:'left',        /* Yellow=right, Blue=left */
 };
 
-function getAction(e){ return KEY_MAP[e.keyCode] || KEY_MAP[e.which] || null; }
+let _lastFocusedIdx = 0;
+let _autoPlayTimer  = null;
 
-function getTiles(){ return Array.from(el('dock').querySelectorAll('.tile')); }
-
-let _autoPlayTimer = null;
-let _lastFocusedIdx = 0; /* remember where we were */
+function getTiles(){
+  if (currentTab === 'movies')
+    return Array.from(el('movies-dock').querySelectorAll('.movie-tile'));
+  return Array.from(el('dock').querySelectorAll('.tile'));
+}
 
 function focusTile(idx){
   const tiles = getTiles();
   if (!tiles.length) return;
-  /* clamp — never wrap back to start */
   idx = Math.max(0, Math.min(idx, tiles.length - 1));
   _lastFocusedIdx = idx;
   tiles[idx].focus();
   tiles[idx].scrollIntoView({ block:'nearest', inline:'nearest' });
-
-  /* Cancel any pending auto-play, then start a fresh 2s timer.
-     Only fires if user stops pressing buttons for 2 seconds. */
   clearTimeout(_autoPlayTimer);
   _autoPlayTimer = setTimeout(() => {
     const t = getTiles()[_lastFocusedIdx];
@@ -1254,20 +1085,42 @@ function focusTile(idx){
   }, 2000);
 }
 
-function currentTileIdx(){
-  return getTiles().indexOf(document.activeElement);
-}
+function getAction(e){ return KEY_MAP[e.keyCode] || KEY_MAP[e.which] || null; }
 
 function attachRemoteHandlers(){
   document.addEventListener('keydown', onRemoteKeydown, true);
   document.addEventListener('keyup', function(e){
-    if (KEY_MAP[e.keyCode] || KEY_MAP[e.which]) e.preventDefault();
+    if (getAction(e)) e.preventDefault();
   }, true);
   document.addEventListener('keydown', function(e){
     if (e.keyCode === 9) e.preventDefault();
   }, true);
-  /* Focus whichever tile was last playing, or tile 0 */
-  setTimeout(() => focusTile(_lastFocusedIdx), 150);
+  setTimeout(() => {
+    el('tab-sports').focus();
+  }, 150);
+}
+
+function showOverlay(){
+  overlayVisible = true;
+  el('overlay').classList.remove('hidden');
+  setTimeout(() => {
+    const tiles = getTiles();
+    const idx = Math.max(0, Math.min(_lastFocusedIdx, tiles.length - 1));
+    if (tiles[idx]) tiles[idx].focus();
+    else el('tab-' + currentTab).focus();
+  }, 50);
+}
+
+function hideOverlay(){
+  if (!hasStartedPlayback) return;
+  overlayVisible = false;
+  el('overlay').classList.add('hidden');
+}
+
+function resetHideTimer(){
+  clearTimeout(hideTimer);
+  if (!hasStartedPlayback) return;
+  hideTimer = setTimeout(hideOverlay, OVERLAY_HIDE_DELAY);
 }
 
 function onRemoteKeydown(e){
@@ -1280,7 +1133,7 @@ function onRemoteKeydown(e){
   if (!el('screen-home').classList.contains('active')) return;
 
   if (!overlayVisible){
-    showOverlay(); /* showOverlay now restores focus to _lastFocusedIdx */
+    showOverlay();
     resetHideTimer();
     return;
   }
@@ -1296,8 +1149,7 @@ function onRemoteKeydown(e){
   if (action === 'playpause'){
     clearTimeout(_autoPlayTimer);
     const v = el('player');
-    if (v.paused) v.play().catch(()=>{});
-    else v.pause();
+    v.paused ? v.play().catch(()=>{}) : v.pause();
     return;
   }
 
@@ -1308,45 +1160,64 @@ function onRemoteKeydown(e){
     return;
   }
 
-  const tiles = getTiles();
-  if (!tiles.length) return;
+  /* ---- directional navigation ---- */
+  const tiles   = getTiles();
   const focused = document.activeElement;
-  const isSignout = focused === el('signout-btn');
-  const tileIdx = tiles.indexOf(focused);
-  const isTile = tileIdx !== -1;
+  const isSignout    = focused === el('signout-btn');
+  const isTabSports  = focused === el('tab-sports');
+  const isTabMovies  = focused === el('tab-movies');
+  const isTab        = isTabSports || isTabMovies;
+  const tileIdx      = tiles.indexOf(focused);
+  const isTile       = tileIdx !== -1;
 
-  /* Ch▼ = next channel, Ch▲ = previous — NO wrap-around */
   if (action === 'down'){
-    if (isSignout){ focusTile(0); }
-    else if (isTile){
+    if (isSignout || isTab){
+      /* top bar → enter tile grid */
+      if (tiles.length) focusTile(0);
+    } else if (isTile){
       if (tileIdx + 1 < tiles.length) focusTile(tileIdx + 1);
-      /* already at last channel — stay, don't wrap */
-    } else { focusTile(_lastFocusedIdx); }
+      /* at last — stay, no wrap */
+    } else {
+      if (tiles.length) focusTile(0);
+    }
     return;
   }
 
   if (action === 'up'){
     if (isTile){
-      if (tileIdx > 0) focusTile(tileIdx - 1);
-      /* already at first — stay */
-    } else if (isSignout){ /* stay on signout */ }
-    else { focusTile(_lastFocusedIdx); }
-    return;
-  }
-
-  if (action === 'left'){
-    if (isTile){ tileIdx > 0 ? focusTile(tileIdx - 1) : el('signout-btn').focus(); }
-    else { focusTile(_lastFocusedIdx); }
+      if (tileIdx === 0) el('tab-' + currentTab).focus();
+      else focusTile(tileIdx - 1);
+    } else if (isTab){
+      el('signout-btn').focus();
+    }
+    /* on signout — stay */
     return;
   }
 
   if (action === 'right'){
-    if (isTile && tileIdx + 1 < tiles.length) focusTile(tileIdx + 1);
-    else if (!isTile) focusTile(_lastFocusedIdx);
+    if (isTabSports){
+      /* switch to Movies tab */
+      switchTab('movies');
+      el('tab-movies').focus();
+    } else if (isTile){
+      if (tileIdx + 1 < tiles.length) focusTile(tileIdx + 1);
+    } else if (isSignout){
+      el('tab-sports').focus();
+    }
     return;
   }
 
-  focusTile(_lastFocusedIdx);
+  if (action === 'left'){
+    if (isTabMovies){
+      /* switch back to Channels tab */
+      switchTab('sports');
+      el('tab-sports').focus();
+    } else if (isTile){
+      if (tileIdx === 0) el('tab-' + currentTab).focus();
+      else focusTile(tileIdx - 1);
+    }
+    return;
+  }
 }
 
 /* ---------- toast ---------- */
@@ -1359,7 +1230,7 @@ function showToast(msg){
   toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-
+boot();
 </script>
 </body>
 </html>
